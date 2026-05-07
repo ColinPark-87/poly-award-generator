@@ -14,8 +14,8 @@ TEMPLATES = {
 # 앱 UI에서 사용자가 직접 선택 가능 (기본값)
 TEMPLATE_PAGE = {
     "perfect_score": 0,
-    "honor_roll":    1,
-    "best_writer":   2,
+    "honor_roll":    0,
+    "best_writer":   0,
 }
 
 # PDF → PNG 변환 해상도 (200 DPI → 2340×1655 px)
