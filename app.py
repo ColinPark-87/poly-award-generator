@@ -155,33 +155,52 @@ if uploaded:
 
         st.success(f"총 {len(generated)}개 상장 생성 완료!")
 
-        # ── 수상자 명단 병렬 3컬럼 ──────────────────────────
+        # ── 수상자 명단 병렬 3컬럼 (행 클릭 → 아래 미리보기) ──
         st.markdown("---")
+        st.caption("학생 이름을 클릭하면 아래에 상장 미리보기와 다운로드가 표시됩니다.")
         col1, col2, col3 = st.columns(3)
+
+        ev_ps = ev_hr = ev_bw = None
         with col1:
             st.markdown(f"#### 🏆 Perfect Score — {len(ps)}명")
             if ps:
-                st.dataframe(
+                ev_ps = st.dataframe(
                     pd.DataFrame([{"이름": s["english_name"], "반": s["class"]}
                                   for s in ps]),
                     hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_ps",
                 )
         with col2:
             st.markdown(f"#### 🎖 Honor Roll — {len(hr)}명")
             if hr:
-                st.dataframe(
+                ev_hr = st.dataframe(
                     pd.DataFrame([{"이름": s["english_name"], "반": s["class"],
                                    "평균": s["average"]} for s in hr]),
                     hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_hr",
                 )
         with col3:
             st.markdown(f"#### ✍️ Best Writer — {len(bw)}명")
             if bw:
-                st.dataframe(
+                ev_bw = st.dataframe(
                     pd.DataFrame([{"이름": s["english_name"], "반": s["class"],
                                    "LC점수": s["lc"]} for s in bw]),
                     hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_bw",
                 )
+
+        # 클릭된 학생 파악 (perfect_score → honor_roll → best_writer 우선순위)
+        _sel_student = None
+        _sel_award   = None
+        if ev_ps and ev_ps.selection.rows:
+            _sel_student = ps[ev_ps.selection.rows[0]]
+            _sel_award   = "perfect_score"
+        elif ev_hr and ev_hr.selection.rows:
+            _sel_student = hr[ev_hr.selection.rows[0]]
+            _sel_award   = "honor_roll"
+        elif ev_bw and ev_bw.selection.rows:
+            _sel_student = bw[ev_bw.selection.rows[0]]
+            _sel_award   = "best_writer"
 
         # ── ZIP 전체 다운로드 ────────────────────────────────
         st.markdown("---")
@@ -190,51 +209,38 @@ if uploaded:
             data=r["zip_bytes"],
             file_name=r["zip_name"],
             mime="application/zip",
+            key="zip_dl",
         )
 
-        # ── 개별 다운로드 (탭 + 셀렉트박스) ──────────────────
-        st.subheader("개별 다운로드")
-
-        _groups = {
-            "perfect_score": [(fn, pb, s) for (at, _, fn, pb, s) in generated if at == "perfect_score"],
-            "honor_roll":    [(fn, pb, s) for (at, _, fn, pb, s) in generated if at == "honor_roll"],
-            "best_writer":   [(fn, pb, s) for (at, _, fn, pb, s) in generated if at == "best_writer"],
-        }
-
-        tab_ps, tab_hr, tab_bw = st.tabs([
-            f"🏆 Perfect Score ({len(_groups['perfect_score'])}명)",
-            f"🎖 Honor Roll ({len(_groups['honor_roll'])}명)",
-            f"✍️ Best Writer ({len(_groups['best_writer'])}명)",
-        ])
-
-        for tab, award_type in zip(
-            [tab_ps, tab_hr, tab_bw],
-            ["perfect_score", "honor_roll", "best_writer"],
-        ):
-            group = _groups[award_type]
-            with tab:
-                if not group:
-                    st.info("해당 수상자 없음")
-                    continue
-                options = [f"{s['english_name']}  ({s['class']})" for _, _, s in group]
-                sel     = st.selectbox("수상자 선택", options, key=f"sel_{award_type}")
-                sel_idx = options.index(sel)
-                filename, pdf_bytes, s = group[sel_idx]
-
-                col_img, col_info = st.columns([2, 1])
-                with col_img:
-                    st.image(pdf_to_preview_png(pdf_bytes), use_container_width=True)
-                with col_info:
-                    st.markdown(f"### {s['english_name']}")
-                    st.caption(s["class"])
-                    if award_type == "honor_roll":
-                        st.metric("평균", f"{s['average']:.2f}%")
-                    elif award_type == "best_writer":
-                        st.metric("LC 점수", s["lc"])
-                    st.download_button(
-                        label="PDF 다운로드",
-                        data=pdf_bytes,
-                        file_name=filename,
-                        mime="application/pdf",
-                        key=f"dl_{award_type}",
-                    )
+        # ── 개별 미리보기 / 다운로드 ─────────────────────────
+        st.markdown("---")
+        if _sel_student is None:
+            st.info("위 명단에서 학생을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
+        else:
+            _AWARD_LABEL = {
+                "perfect_score": "🏆 Perfect Score",
+                "honor_roll":    "🎖 Honor Roll",
+                "best_writer":   "✍️ Best Writer",
+            }
+            for at, _, fn, pb, s in generated:
+                if at == _sel_award and s["english_name"] == _sel_student["english_name"] \
+                        and s["class"] == _sel_student["class"]:
+                    col_img, col_info = st.columns([2, 1])
+                    with col_img:
+                        st.image(pdf_to_preview_png(pb), use_container_width=True)
+                    with col_info:
+                        st.markdown(f"**{_AWARD_LABEL[at]}**")
+                        st.markdown(f"### {s['english_name']}")
+                        st.caption(s["class"])
+                        if at == "honor_roll":
+                            st.metric("평균", f"{s['average']:.2f}%")
+                        elif at == "best_writer":
+                            st.metric("LC 점수", s["lc"])
+                        st.download_button(
+                            label="PDF 다운로드",
+                            data=pb,
+                            file_name=fn,
+                            mime="application/pdf",
+                            key="dl_selected",
+                        )
+                    break
