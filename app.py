@@ -40,19 +40,19 @@ def _ensure_fonts():
 
 _ensure_fonts()
 
-st.set_page_config(page_title="Poly 상장 생성기", layout="wide")
-st.title("Poly 상장 생성기")
+st.set_page_config(page_title="Poly 상장 생성기", page_icon="🏅", layout="wide")
+
+from poly_theme import (inject_poly_theme, poly_header, poly_campus_banner,
+                        poly_section, poly_kpi_row, poly_footer)
+inject_poly_theme()
+
+poly_header(
+    title="상장 생성기",
+    subtitle="월간 평가 결과로 4종 상장을 자동 생성합니다.",
+    eyebrow="POLY ACADEMY · CERTIFICATES",
+)
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
-_CAMPUS_COLORS = {
-    "중계":     "#1B3F7A",
-    "광명":     "#1E6B4A",
-    "일산":     "#6B3A1E",
-    "목동":     "#4A1E6B",
-    "목동매그넷": "#1E556B",
-}
-_DEFAULT_COLOR = "#2C2C2C"
-
 if "campus_list" not in st.session_state:
     st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷"]
 
@@ -110,24 +110,8 @@ if st.session_state.get("show_delete_input"):
         st.error("비밀번호가 틀렸습니다.")
 
 # 캠퍼스 배너
-_color = _CAMPUS_COLORS.get(campus, _DEFAULT_COLOR)
-st.markdown(f"""
-<div style="
-    background: linear-gradient(135deg, {_color} 0%, {_color}cc 100%);
-    border-radius: 12px;
-    padding: 18px 28px;
-    margin: 8px 0 16px 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-">
-    <span style="font-size:2rem;">📍</span>
-    <div>
-        <div style="color:rgba(255,255,255,0.7); font-size:0.8rem; letter-spacing:0.1em; text-transform:uppercase;">POLY LANGUAGE INSTITUTE</div>
-        <div style="color:white; font-size:1.6rem; font-weight:700; line-height:1.2;">{campus} 캠퍼스</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+import datetime as _dt
+poly_campus_banner(campus, term=f"{_dt.date.today().year}년 {_dt.date.today().month}월")
 
 # 캠퍼스 설정 로드
 _campus_cfg = cfg.get_campus_cfg(campus)
@@ -136,10 +120,11 @@ _bw_def     = _campus_cfg["bw_min_lc"]
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
-up_col1, up_col2 = st.columns(2)
+poly_section("01 · 데이터 업로드", "Monthly Test 결과 엑셀과 Best SR CSV를 각각 업로드하세요.")
+up_col1, up_col2 = st.columns(2, gap="medium")
 
 with up_col1:
-    st.subheader("📝 Monthly Test")
+    st.markdown('<div class="poly-drop"><b>Monthly Test</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
     uploaded_monthly = st.file_uploader("성적 엑셀 업로드 (.xlsx)", type=["xlsx"], key="monthly_upload")
     if uploaded_monthly:
         month = extract_month_from_filename(uploaded_monthly.name)
@@ -151,7 +136,7 @@ with up_col1:
         month = ""
 
 with up_col2:
-    st.subheader("⭐ Best SR")
+    st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
     uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
     if uploaded_sr:
         st.success(f"파일 감지: **{uploaded_sr.name}**")
@@ -177,16 +162,13 @@ _award_labels = _campus_cfg.get("award_labels", {
     "best_sr":       "Best SR",
 })
 
-# 캠퍼스 요약 카드 (항상 표시)
-st.info(
-    f"**{campus} 캠퍼스** | "
-    f"Perfect Score ≥ {_campus_cfg['perfect_score_min']:.0f}%　"
-    f"Honor Roll ≥ {_campus_cfg['honor_roll_min']:.0f}%　"
-    f"Best Writer LC ≥ GT {_bw_def.get('GT',27)} / MGT {_bw_def.get('MGT',27)} / "
-    f"S {_bw_def.get('S',27)} / MAG {_bw_def.get('MAG',27)}"
-)
+poly_section("02 · 수상 기준",
+             f"PS ≥ {_campus_cfg['perfect_score_min']:.0f}%  |  "
+             f"HR ≥ {_campus_cfg['honor_roll_min']:.0f}%  |  "
+             f"BW LC ≥ GT {_bw_def.get('GT',27)} / MGT {_bw_def.get('MGT',27)} / "
+             f"S {_bw_def.get('S',27)} / MAG {_bw_def.get('MAG',27)}")
 
-with st.expander("수상 기준 수정", expanded=False):
+with st.expander("⚙️ 수상 기준 수정", expanded=False):
     st.caption("변경하면 해당 점수 기준으로 수상자가 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
     cr1, cr2 = st.columns(2)
     # 캠퍼스별로 key를 달리해 캠퍼스 변경 시 값이 초기화되도록 함
@@ -206,7 +188,10 @@ with st.expander("수상 기준 수정", expanded=False):
     bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool((uploaded_monthly and month) or uploaded_sr)
-if st.button("상장 생성하기", type="primary", disabled=not can_generate):
+st.markdown('<div class="poly-cta-wrap">', unsafe_allow_html=True)
+_btn_generate = st.button("상장 생성하기", type="primary", disabled=not can_generate)
+st.markdown('</div>', unsafe_allow_html=True)
+if _btn_generate:
 
     generated = []   # (award_type, folder, filename, pdf_bytes, student)
     errors    = []
@@ -320,47 +305,62 @@ if "result" in st.session_state:
     st.success(f"총 {len(generated)}개 상장 생성 완료!")
 
     # ── 수상자 명단 4컬럼 병렬 ────────────────────────────
-    st.markdown("---")
-    st.caption("학생 이름을 클릭하면 아래에 상장 미리보기와 다운로드가 표시됩니다.")
-    col1, col2, col3, col4 = st.columns(4)
+    poly_section("03 · 수상자 명단", "학생 이름을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
+    col1, col2, col3, col4 = st.columns(4, gap="small")
 
     ev_ps = ev_hr = ev_bw = ev_sr = None
 
     with col1:
-        st.markdown(f"#### 🏆 {_award_labels['perfect_score']} — {len(ps)}명")
+        st.markdown(
+            f'<div class="poly-card-head"><span class="ttl">🏆 {_award_labels["perfect_score"]}</span>'
+            f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
         if ps:
             ev_ps = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"]} for s in ps]),
                 hide_index=True, use_container_width=True,
                 selection_mode="single-row", on_select="rerun", key="sel_ps",
             )
+        elif not ps:
+            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown(f"#### 🎖 {_award_labels['honor_roll']} — {len(hr)}명")
+        st.markdown(
+            f'<div class="poly-card-head"><span class="ttl">🎖 {_award_labels["honor_roll"]}</span>'
+            f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
         if hr:
             ev_hr = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
                 hide_index=True, use_container_width=True,
                 selection_mode="single-row", on_select="rerun", key="sel_hr",
             )
+        elif not hr:
+            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
     with col3:
-        st.markdown(f"#### ✍️ {_award_labels['best_writer']} — {len(bw)}명")
+        st.markdown(
+            f'<div class="poly-card-head"><span class="ttl">✍️ {_award_labels["best_writer"]}</span>'
+            f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
         if bw:
             ev_bw = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
                 hide_index=True, use_container_width=True,
                 selection_mode="single-row", on_select="rerun", key="sel_bw",
             )
+        elif not bw:
+            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
     with col4:
-        st.markdown(f"#### ⭐ {_award_labels['best_sr']} — {len(sr)}명")
+        st.markdown(
+            f'<div class="poly-card-head"><span class="ttl">⭐ {_award_labels["best_sr"]}</span>'
+            f'<span class="cnt">{len(sr)}</span></div>', unsafe_allow_html=True)
         if sr:
             ev_sr = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "GE": s["ge"]} for s in sr]),
                 hide_index=True, use_container_width=True,
                 selection_mode="single-row", on_select="rerun", key="sel_sr",
             )
+        elif not sr:
+            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
     # ── 클릭된 학생 파악 ──────────────────────────────────
     _sel_student = None
@@ -379,17 +379,18 @@ if "result" in st.session_state:
         _sel_award   = "best_sr"
 
     # ── ZIP 전체 다운로드 ──────────────────────────────────
-    st.markdown("---")
+    poly_section("04 · 다운로드", "전체 ZIP 또는 개별 PDF를 다운로드할 수 있습니다.")
     st.download_button(
         label=f"전체 ZIP 다운로드 ({len(generated)}개)",
         data=r["zip_bytes"],
         file_name=r["zip_name"],
         mime="application/zip",
+        type="primary",
         key="zip_dl",
     )
 
     # ── 개별 미리보기 / 다운로드 ──────────────────────────
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
     _AWARD_LABEL = {
         "perfect_score": f"🏆 {_award_labels['perfect_score']}",
         "honor_roll":    f"🎖 {_award_labels['honor_roll']}",
@@ -424,3 +425,5 @@ if "result" in st.session_state:
                         key="dl_selected",
                     )
                 break
+
+poly_footer("Poly Academy · 상장 생성기", f"v1.0 · {_dt.date.today().year}")
