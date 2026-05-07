@@ -42,6 +42,11 @@ _ensure_fonts()
 st.set_page_config(page_title="Poly 상장 생성기", layout="wide")
 st.title("Poly 상장 생성기")
 
+# ── 캠퍼스 선택 ─────────────────────────────────────────
+_CAMPUSES = ["중계", "노원", "상계", "하계", "공릉", "묵동", "월계"]
+_campus_col, _ = st.columns([1, 3])
+campus = _campus_col.selectbox("캠퍼스", _CAMPUSES, index=0, key="campus")
+
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
