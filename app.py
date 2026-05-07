@@ -64,6 +64,17 @@ with up_col2:
     uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
     if uploaded_sr:
         st.success(f"파일 감지: **{uploaded_sr.name}**")
+    _MONTHS = ["January","February","March","April","May","June",
+               "July","August","September","October","November","December"]
+    import datetime
+    sr_m_col, sr_y_col = st.columns(2)
+    sr_month_name = sr_m_col.selectbox("SR 상장 월", _MONTHS,
+                                        index=datetime.date.today().month - 1,
+                                        key="sr_month")
+    sr_year       = sr_y_col.number_input("연도", 2020, 2100,
+                                           datetime.date.today().year,
+                                           key="sr_year")
+    sr_month = f"{sr_month_name} {int(sr_year)}"
 
 # ══════════════════════════════════════════════════════════
 # 수상 기준 설정 + 생성 버튼
@@ -139,7 +150,6 @@ if st.button("상장 생성하기", type="primary", disabled=not can_generate):
             sr_list = sorted(select_sr_winners(sr_rows), key=_sr_sort_key)
             os.unlink(tmp_path)
 
-        sr_month = month or ""
         with st.spinner("Best SR 상장 PDF 생성 중..."):
             with tempfile.TemporaryDirectory() as tmpdir:
                 for s in sr_list:
