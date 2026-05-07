@@ -33,6 +33,18 @@ def _load_font_fit(filename: str, text: str, max_size: int, min_size: int,
     return _load_font(filename, min_size)
 
 
+def pdf_to_preview_png(pdf_bytes: bytes, preview_width: int = 700) -> bytes:
+    """PDF bytes → PNG bytes (미리보기용)."""
+    doc  = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    scale = preview_width / page.rect.width
+    mat  = fitz.Matrix(scale, scale)
+    pix  = page.get_pixmap(matrix=mat)
+    png  = pix.tobytes("png")
+    doc.close()
+    return png
+
+
 def _pdf_page_to_pil(pdf_path: str, page_index: int = 0) -> Image.Image:
     doc  = fitz.open(pdf_path)
     page = doc[page_index]

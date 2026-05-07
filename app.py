@@ -5,7 +5,7 @@ import tempfile
 import requests
 import streamlit as st
 from matcher import load_rows_from_excel, extract_month_from_filename, select_winners
-from generator import build_certificate
+from generator import build_certificate, pdf_to_preview_png
 
 # ── 폰트 자동 다운로드 (클라우드 환경에서도 동작) ──────────────
 def _ensure_fonts():
@@ -128,12 +128,18 @@ if uploaded:
                 continue
             with st.expander(f"{award_label} — {len(group)}명"):
                 for filename, pdf_bytes, s in group:
-                    col_name, col_btn = st.columns([3, 1])
-                    col_name.write(f"**{s['english_name']}** ({s['class']})")
-                    col_btn.download_button(
-                        label="PDF",
-                        data=pdf_bytes,
-                        file_name=filename,
-                        mime="application/pdf",
-                        key=filename,
-                    )
+                    col_preview, col_info = st.columns([3, 1])
+                    with col_preview:
+                        preview_png = pdf_to_preview_png(pdf_bytes)
+                        st.image(preview_png, use_container_width=True)
+                    with col_info:
+                        st.markdown(f"**{s['english_name']}**")
+                        st.caption(s["class"])
+                        st.download_button(
+                            label="PDF 다운로드",
+                            data=pdf_bytes,
+                            file_name=filename,
+                            mime="application/pdf",
+                            key=filename,
+                        )
+                    st.divider()
