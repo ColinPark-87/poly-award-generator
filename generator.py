@@ -1,5 +1,6 @@
 import os
 import io
+import functools
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw, ImageFont
 import config
@@ -31,6 +32,42 @@ def _load_font_fit(filename: str, text: str, max_size: int, min_size: int,
             return font
         size -= 5
     return _load_font(filename, min_size)
+
+
+@functools.lru_cache(maxsize=None)
+def _scan_template_lines(pdf_path: str, dpi: int) -> tuple:
+    """
+    템플릿 PDF에서 수평선 목록을 추출한다 (lru_cache로 한 번만 실행).
+    반환: ((y, width), ...) 형태의 tuple (y 오름차순)
+    """
+    doc  = fitz.open(pdf_path)
+    page = doc[0]
+    sc   = dpi / 72.0
+    rows = []
+    for p in page.get_drawings():
+        for item in p.get("items", []):
+            if item[0] == "l":                        # 직선
+                a, b = item[1], item[2]
+                if abs(a.y - b.y) < 0.5:             # 수평선
+                    rows.append((round(a.y * sc), abs(b.x - a.x) * sc))
+            elif item[0] == "re":                     # 얇은 직사각형
+                rect = item[1]
+                if rect.height * sc < 5 and rect.width * sc > 100:
+                    rows.append((round(rect.y0 * sc), rect.width * sc))
+    doc.close()
+    return tuple(sorted(rows, key=lambda r: r[0]))
+
+
+def _find_divider_y(lines: tuple, fallback: int) -> int:
+    """y 500-1050 범위에서 가장 긴 수평선 = 이름/텍스트 구분선."""
+    mid = [l for l in lines if 500 < l[0] < 1050]
+    return max(mid, key=lambda l: l[1])[0] if mid else fallback
+
+
+def _find_date_line_y(lines: tuple, fallback: int) -> int:
+    """y 1100-1420 범위의 선 중 가장 위 = Date 밑줄."""
+    bot = [l for l in lines if 1100 < l[0] < 1420]
+    return min(bot, key=lambda l: l[0])[0] if bot else fallback
 
 
 def pdf_to_preview_png(pdf_bytes: bytes, preview_width: int = 700) -> bytes:
@@ -75,25 +112,34 @@ def build_certificate(
     draw = ImageDraw.Draw(img)
     w    = img.width
 
-    # ── 이름 (길이에 따라 폰트 크기 자동 조절) ────────────
+    # ── 선 위치 자동 감지 (캐시됨) ────────────────────────
+    lines       = _scan_template_lines(template_path, config.DPI)
+    divider_y   = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK[award_type])
+    date_line_y = _find_date_line_y(lines, config.DATE_LINE_Y_FALLBACK)
+
+    # ── 반/레벨 이름 (AWARDED TO 아래 고정 Y) ─────────────
+    class_font = _load_font(config.CLASS_FONT, config.CLASS_FONT_SIZE)
+    class_y    = config.CLASS_Y[award_type]
+    _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
+
+    # ── 학생 이름: 구분선 바로 위 (bbox 하단 정렬) ─────────
+    # 어떤 대소문자 조합이 와도 텍스트 하단이 항상 선 위 NAME_LINE_GAP px
     name_font = _load_font_fit(
         config.NAME_FONT, english_name,
         config.NAME_FONT_SIZE[award_type], config.NAME_FONT_SIZE_MIN,
         config.NAME_MAX_WIDTH, draw,
     )
-    name_y = config.NAME_Y[award_type]
+    name_bbox = draw.textbbox((0, 0), english_name, font=name_font)
+    name_y    = divider_y - name_bbox[3] - config.NAME_LINE_GAP
     _draw_centered(draw, english_name, name_y, name_font, config.NAME_COLOR, w)
 
-    # ── 반/레벨 이름 ───────────────────────────────────────
-    class_font = _load_font(config.CLASS_FONT, config.CLASS_FONT_SIZE)
-    class_y    = config.CLASS_Y[award_type]
-    _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
-
-    # ── 날짜 (Date 라인 위에 중앙 정렬) ───────────────────
+    # ── 날짜: Date 밑줄 바로 위 (bbox 하단 정렬) ──────────
+    # January~December 어떤 월이 와도 텍스트 하단이 항상 밑줄 위 DATE_LINE_GAP px
     date_font = _load_font(config.DATE_FONT, config.DATE_FONT_SIZE)
     date_bbox = draw.textbbox((0, 0), month, font=date_font)
+    date_y    = date_line_y - date_bbox[3] - config.DATE_LINE_GAP
     date_x    = config.DATE_CENTER_X - (date_bbox[0] + date_bbox[2]) // 2
-    draw.text((date_x, config.DATE_Y), month, font=date_font, fill=config.DATE_COLOR)
+    draw.text((date_x, date_y), month, font=date_font, fill=config.DATE_COLOR)
 
     # ── PDF 저장 ──────────────────────────────────────────
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)

@@ -18,8 +18,7 @@ DPI = 200
 # Perfect Score / Best Writer: 타이틀 1줄 → "AWARDED TO" y≈330
 # Honor Roll: 타이틀 2줄(HONOR ROLL + AWARD) → "AWARDED TO" y≈497
 
-# ── 반/레벨 이름: AWARDED TO 바로 아래 ────────────────────────
-# 이미지: 2340×1655px / AWARDED TO 하단 y≈490 (honor_roll y≈600)
+# ── 반/레벨 이름: AWARDED TO 바로 아래 (고정 Y) ───────────────
 CLASS_Y = {
     "perfect_score": 520,
     "honor_roll":    625,
@@ -29,17 +28,13 @@ CLASS_FONT_SIZE = 52
 CLASS_COLOR     = (13, 27, 62)
 CLASS_FONT      = "Montserrat-Bold.ttf"
 
-# ── 학생 이름: 가로 구분선 바로 위 ────────────────────────────
-# perfect_score/best_writer: 구분선 y≈870 → NAME_Y=690 (폰트 160px)
-# honor_roll: 구분선 y≈824, 공간 좁음 → NAME_Y=710 (폰트 110px)
-NAME_Y = {
-    "perfect_score": 690,
-    "honor_roll":    710,
-    "best_writer":   690,
-}
+# ── 학생 이름: 구분선 기준 하단 정렬 ─────────────────────────
+# NAME_Y 대신 generator가 구분선 위치를 자동 감지 후 bbox 하단 정렬
+# → 대소문자 조합, 이름 길이 상관없이 항상 선 바로 위에 위치
+NAME_LINE_GAP  = 5             # 텍스트 하단 ~ 구분선 간격 (px)
 NAME_FONT_SIZE = {             # award_type별 최대 폰트 크기
     "perfect_score": 160,
-    "honor_roll":    110,      # 공간 제한으로 작게
+    "honor_roll":    110,      # 2줄 타이틀로 공간 좁음
     "best_writer":   160,
 }
 NAME_FONT_SIZE_MIN = 70
@@ -47,11 +42,21 @@ NAME_MAX_WIDTH     = 1600
 NAME_COLOR         = (13, 27, 62)
 NAME_FONT          = "DancingScript-Bold.ttf"
 
-# ── Date: Date 밑줄(y≈1295) 바로 위 ──────────────────────────
-# 폰트 크기 52px 기준 높이≈52px → top y = 1295 - 52 - 10gap = 1233
-# Date 라인 중심 X: 스크린샷 측정 기준 x≈565 (2340px 이미지)
-DATE_CENTER_X   = 706
-DATE_Y          = 1233
-DATE_FONT_SIZE  = 52
-DATE_COLOR      = (13, 27, 62)
-DATE_FONT       = "Montserrat-Bold.ttf"
+# 자동 감지 실패 시 폴백 값
+DIVIDER_LINE_Y_FALLBACK = {
+    "perfect_score": 870,
+    "honor_roll":    870,
+    "best_writer":   870,
+}
+
+# ── Date: Date 밑줄 기준 하단 정렬 ───────────────────────────
+# DATE_Y 대신 generator가 밑줄 위치를 자동 감지 후 bbox 하단 정렬
+# → January~December 어떤 월이 와도 항상 선 바로 위에 위치
+DATE_LINE_GAP  = 5             # 텍스트 하단 ~ Date 밑줄 간격 (px)
+DATE_CENTER_X  = 706           # Date 밑줄 중심 X (2340px 기준)
+DATE_FONT_SIZE = 52
+DATE_COLOR     = (13, 27, 62)
+DATE_FONT      = "Montserrat-Bold.ttf"
+
+# 자동 감지 실패 시 폴백
+DATE_LINE_Y_FALLBACK = 1295
