@@ -113,10 +113,10 @@ with st.expander("수상 기준 설정 (선택사항)", expanded=False):
 
     st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
     bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
-    bw_gt  = bw_col1.number_input("GT",  0, 30, 0, step=1, key="bw_gt")
-    bw_mgt = bw_col2.number_input("MGT", 0, 30, 0, step=1, key="bw_mgt")
-    bw_s   = bw_col3.number_input("S",   0, 30, 0, step=1, key="bw_s")
-    bw_mag = bw_col4.number_input("MAG", 0, 30, 0, step=1, key="bw_mag")
+    bw_gt  = bw_col1.number_input("GT",  0, 30, 27, step=1, key="bw_gt")
+    bw_mgt = bw_col2.number_input("MGT", 0, 30, 27, step=1, key="bw_mgt")
+    bw_s   = bw_col3.number_input("S",   0, 30, 27, step=1, key="bw_s")
+    bw_mag = bw_col4.number_input("MAG", 0, 30, 27, step=1, key="bw_mag")
     bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool((uploaded_monthly and month) or uploaded_sr)
