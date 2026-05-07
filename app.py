@@ -50,18 +50,6 @@ if uploaded:
     else:
         month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="")
 
-    # ── 템플릿 페이지 선택 (선택사항) ──────────────────────
-    with st.expander("템플릿 페이지 설정 (선택사항, 기본: 0·1·2)", expanded=False):
-        st.caption("업로드된 PDF에 디자인 변형이 여러 페이지로 있을 경우 아래에서 선택하세요.")
-        c1, c2, c3 = st.columns(3)
-        page_ps = c1.number_input("Perfect Score 페이지", 0, 4, 0, key="page_ps")
-        page_hr = c2.number_input("Honor Roll 페이지",    0, 4, 1, key="page_hr")
-        page_bw = c3.number_input("Best Writer 페이지",   0, 4, 2, key="page_bw")
-    _template_pages = {
-        "perfect_score": int(page_ps),
-        "honor_roll":    int(page_hr),
-        "best_writer":   int(page_bw),
-    }
 
     # ── 수상 기준 설정 (생성 전에 설정 → 버튼 클릭 → 해당 기준으로 검색) ──
     with st.expander("수상 기준 설정 (선택사항)", expanded=False):
@@ -121,7 +109,6 @@ if uploaded:
                                 student_class=s["class"],
                                 month=month,
                                 output_path=out_path,
-                                page_index=_template_pages[award_type],
                             )
                             with open(out_path, "rb") as f:
                                 pdf_bytes = f.read()

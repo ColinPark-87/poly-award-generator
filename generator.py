@@ -99,25 +99,21 @@ def build_certificate(
     month:             str,
     output_path:       str,
     template_override: str | None = None,
-    page_index:        int | None = None,
 ) -> None:
     """
     상장 PDF 생성.
     award_type: 'perfect_score' | 'honor_roll' | 'best_writer'
-    page_index: PDF 내 사용할 페이지 번호 (0-based). None이면 config.TEMPLATE_PAGE 기본값 사용.
     """
     template_path = template_override or config.TEMPLATES[award_type]
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"템플릿 없음: {template_path}")
 
-    pidx = page_index if page_index is not None else config.TEMPLATE_PAGE.get(award_type, 0)
-
-    img  = _pdf_page_to_pil(template_path, pidx)
+    img  = _pdf_page_to_pil(template_path, 0)
     draw = ImageDraw.Draw(img)
     w    = img.width
 
     # ── 선 위치 자동 감지 (캐시됨) ────────────────────────
-    lines       = _scan_template_lines(template_path, config.DPI, pidx)
+    lines       = _scan_template_lines(template_path, config.DPI, 0)
     divider_y   = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK[award_type])
     date_line_y = _find_date_line_y(lines, config.DATE_LINE_Y_FALLBACK)
 
