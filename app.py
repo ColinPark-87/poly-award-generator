@@ -9,6 +9,7 @@ import streamlit as st
 from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners)
 from generator import build_certificate, pdf_to_preview_png
+import config as cfg
 
 # ── 학년 → 레벨 정렬 키 ──────────────────────────────────────
 _LEVEL_ORDER = {"GT": 1, "MGT": 2, "S": 3, "MAG": 4}
@@ -68,6 +69,18 @@ if st.session_state.get("show_campus_input"):
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
+# 캠퍼스 변경 시 기준값 세션 초기화
+_campus_cfg = cfg.get_campus_cfg(campus)
+if st.session_state.get("_last_campus") != campus:
+    st.session_state["ps_min"]  = _campus_cfg["perfect_score_min"]
+    st.session_state["hr_min"]  = _campus_cfg["honor_roll_min"]
+    _bw = _campus_cfg["bw_min_lc"]
+    st.session_state["bw_gt"]   = _bw.get("GT",  27)
+    st.session_state["bw_mgt"]  = _bw.get("MGT", 27)
+    st.session_state["bw_s"]    = _bw.get("S",   27)
+    st.session_state["bw_mag"]  = _bw.get("MAG", 27)
+    st.session_state["_last_campus"] = campus
+
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
@@ -105,18 +118,25 @@ with up_col2:
 # ══════════════════════════════════════════════════════════
 # 수상 기준 설정 + 생성 버튼
 # ══════════════════════════════════════════════════════════
+_award_labels = _campus_cfg.get("award_labels", {
+    "perfect_score": "Perfect Score",
+    "honor_roll":    "Honor Roll",
+    "best_writer":   "Best Writer",
+    "best_sr":       "Best SR",
+})
+
 with st.expander("수상 기준 설정 (선택사항)", expanded=False):
-    st.caption("기준을 바꾸면 그 점수에 해당하는 아이들이 수상자로 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
+    st.caption(f"[{campus}] 캠퍼스 기준. 변경하면 해당 점수 기준으로 수상자가 검색됩니다.")
     cr1, cr2 = st.columns(2)
-    ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0, 100.0, step=0.5)
-    hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0, 95.0,  step=0.5)
+    ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0, step=0.5, key="ps_min")
+    hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0, step=0.5, key="hr_min")
 
     st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
     bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
-    bw_gt  = bw_col1.number_input("GT",  0, 30, 27, step=1, key="bw_gt")
-    bw_mgt = bw_col2.number_input("MGT", 0, 30, 27, step=1, key="bw_mgt")
-    bw_s   = bw_col3.number_input("S",   0, 30, 27, step=1, key="bw_s")
-    bw_mag = bw_col4.number_input("MAG", 0, 30, 27, step=1, key="bw_mag")
+    bw_gt  = bw_col1.number_input("GT",  0, 30, step=1, key="bw_gt")
+    bw_mgt = bw_col2.number_input("MGT", 0, 30, step=1, key="bw_mgt")
+    bw_s   = bw_col3.number_input("S",   0, 30, step=1, key="bw_s")
+    bw_mag = bw_col4.number_input("MAG", 0, 30, step=1, key="bw_mag")
     bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool((uploaded_monthly and month) or uploaded_sr)
@@ -164,6 +184,7 @@ if st.button("상장 생성하기", type="primary", disabled=not can_generate):
                                 student_class=s["class"],
                                 month=month,
                                 output_path=out_path,
+                                template_override=cfg.get_template_path(campus, award_type),
                             )
                             with open(out_path, "rb") as f:
                                 pdf_bytes = f.read()
@@ -196,6 +217,7 @@ if st.button("상장 생성하기", type="primary", disabled=not can_generate):
                             student_class=s["class"],
                             month=sr_month,
                             output_path=out_path,
+                            template_override=cfg.get_template_path(campus, "best_sr"),
                         )
                         with open(out_path, "rb") as f:
                             pdf_bytes = f.read()
@@ -239,7 +261,7 @@ if "result" in st.session_state:
     ev_ps = ev_hr = ev_bw = ev_sr = None
 
     with col1:
-        st.markdown(f"#### 🏆 Perfect Score — {len(ps)}명")
+        st.markdown(f"#### 🏆 {_award_labels['perfect_score']} — {len(ps)}명")
         if ps:
             ev_ps = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"]} for s in ps]),
@@ -248,7 +270,7 @@ if "result" in st.session_state:
             )
 
     with col2:
-        st.markdown(f"#### 🎖 Honor Roll — {len(hr)}명")
+        st.markdown(f"#### 🎖 {_award_labels['honor_roll']} — {len(hr)}명")
         if hr:
             ev_hr = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
@@ -257,7 +279,7 @@ if "result" in st.session_state:
             )
 
     with col3:
-        st.markdown(f"#### ✍️ Best Writer — {len(bw)}명")
+        st.markdown(f"#### ✍️ {_award_labels['best_writer']} — {len(bw)}명")
         if bw:
             ev_bw = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
@@ -266,7 +288,7 @@ if "result" in st.session_state:
             )
 
     with col4:
-        st.markdown(f"#### ⭐ Best SR — {len(sr)}명")
+        st.markdown(f"#### ⭐ {_award_labels['best_sr']} — {len(sr)}명")
         if sr:
             ev_sr = st.dataframe(
                 pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "GE": s["ge"]} for s in sr]),
@@ -303,10 +325,10 @@ if "result" in st.session_state:
     # ── 개별 미리보기 / 다운로드 ──────────────────────────
     st.markdown("---")
     _AWARD_LABEL = {
-        "perfect_score": "🏆 Perfect Score",
-        "honor_roll":    "🎖 Honor Roll",
-        "best_writer":   "✍️ Best Writer",
-        "best_sr":       "⭐ Best SR",
+        "perfect_score": f"🏆 {_award_labels['perfect_score']}",
+        "honor_roll":    f"🎖 {_award_labels['honor_roll']}",
+        "best_writer":   f"✍️ {_award_labels['best_writer']}",
+        "best_sr":       f"⭐ {_award_labels['best_sr']}",
     }
     if _sel_student is None:
         st.info("위 명단에서 학생을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")

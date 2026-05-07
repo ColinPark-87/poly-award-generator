@@ -1,15 +1,47 @@
 import os
+import json
 
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 FONT_DIR     = os.path.join(BASE_DIR, "fonts")
 
+# 기본 템플릿 (캠퍼스별 템플릿 없을 때 폴백)
 TEMPLATES = {
     "perfect_score": os.path.join(TEMPLATE_DIR, "perfect_score.pdf"),
     "honor_roll":    os.path.join(TEMPLATE_DIR, "honor_roll.pdf"),
     "best_writer":   os.path.join(TEMPLATE_DIR, "best_writer.pdf"),
     "best_sr":       os.path.join(TEMPLATE_DIR, "best_sr.pdf"),
 }
+
+_CAMPUS_CONFIG_PATH = os.path.join(BASE_DIR, "campus_config.json")
+_DEFAULT_CAMPUS_CFG = {
+    "perfect_score_min": 100.0,
+    "honor_roll_min": 95.0,
+    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "award_labels": {
+        "perfect_score": "Perfect Score",
+        "honor_roll":    "Honor Roll",
+        "best_writer":   "Best Writer",
+        "best_sr":       "Best SR",
+    },
+}
+
+def load_campus_config() -> dict:
+    if os.path.exists(_CAMPUS_CONFIG_PATH):
+        with open(_CAMPUS_CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def get_campus_cfg(campus: str) -> dict:
+    """캠퍼스 설정 반환. 없으면 기본값."""
+    return load_campus_config().get(campus, _DEFAULT_CAMPUS_CFG)
+
+def get_template_path(campus: str, award_type: str) -> str:
+    """캠퍼스별 템플릿 경로. 없으면 기본 templates/ 폴더 사용."""
+    campus_path = os.path.join(TEMPLATE_DIR, campus, f"{award_type}.pdf")
+    if os.path.exists(campus_path):
+        return campus_path
+    return TEMPLATES[award_type]
 
 # PDF → PNG 변환 해상도 (200 DPI → 2340×1655 px)
 DPI = 200
