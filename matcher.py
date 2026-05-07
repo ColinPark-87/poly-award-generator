@@ -1,3 +1,4 @@
+import csv
 import re
 import openpyxl
 from typing import Any
@@ -55,6 +56,63 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
             "average": avg,
         })
     return rows
+
+
+def _parse_ge(ge_str) -> float | None:
+    """GE 값 파싱. '-' 또는 비어있으면 None, '>12.9' 형태도 처리."""
+    s = str(ge_str).strip() if ge_str else ""
+    if s in ("-", ""):
+        return None
+    s = s.lstrip(">")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def load_sr_from_csv(file_path: str) -> list[dict[str, Any]]:
+    """
+    Star Summary Report CSV 파싱.
+    - Student 컬럼: '학번, 이름' → 이름만 추출
+    - GE '-' 또는 test 반은 제외
+    """
+    rows = []
+    with open(file_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            cls        = row.get("Class/Group", "").strip()
+            student_raw = row.get("Student", "").strip()
+            ge_raw     = row.get("GE", "-")
+
+            if not cls or not student_raw:
+                continue
+            if cls.lower().startswith("test"):
+                continue
+
+            ge = _parse_ge(ge_raw)
+            if ge is None:          # 점수 없는 학생·반 제외
+                continue
+
+            # '학번, 이름' → 이름만
+            parts = student_raw.split(",", 1)
+            name  = parts[1].strip() if len(parts) == 2 else student_raw
+
+            rows.append({
+                "class":        cls,
+                "english_name": name,
+                "ge":           ge,
+            })
+    return rows
+
+
+def select_sr_winners(rows: list[dict[str, Any]]) -> list[dict]:
+    """Class/Group별 GE 최고점 학생 1명 선정. 점수 없는 반은 자동 제외."""
+    winner_map: dict[str, dict] = {}
+    for row in rows:
+        cls = row["class"]
+        if cls not in winner_map or row["ge"] > winner_map[cls]["ge"]:
+            winner_map[cls] = row
+    return list(winner_map.values())
 
 
 def select_winners(
