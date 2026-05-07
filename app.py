@@ -1,11 +1,23 @@
 import os
 import io
+import re
 import zipfile
 import tempfile
 import requests
+import pandas as pd
 import streamlit as st
 from matcher import load_rows_from_excel, extract_month_from_filename, select_winners
 from generator import build_certificate, pdf_to_preview_png
+
+# ── 학년 → 레벨 정렬 키 ──────────────────────────────────────
+_LEVEL_ORDER = {"GT": 1, "MGT": 2, "S": 3, "MAG": 4}
+
+def _sort_key(s: dict) -> tuple:
+    """학년 우선, 같은 학년이면 레벨(GT→MGT→S→MAG) 순 정렬."""
+    m = re.match(r"^(GT|MGT|MAG|S)(\d+)", s["class"])
+    if m:
+        return (int(m.group(2)), _LEVEL_ORDER.get(m.group(1), 99))
+    return (99, 99)
 
 # ── 폰트 자동 다운로드 (클라우드 환경에서도 동작) ──────────────
 def _ensure_fonts():
@@ -47,33 +59,51 @@ if uploaded:
             winners = select_winners(rows)
             os.unlink(tmp_path)
 
-        # 결과 요약
+        # ── 수상자 명단 (테이블, 학년→레벨 정렬) ─────────────
+        st.markdown("---")
+
+        ps = sorted(winners["perfect_score"], key=_sort_key)
+        hr = sorted(winners["honor_roll"],    key=_sort_key)
+        bw = sorted(winners["best_writer"],   key=_sort_key)
+
         col1, col2, col3 = st.columns(3)
-        col1.metric("Perfect Score", f"{len(winners['perfect_score'])}명")
-        col2.metric("Honor Roll",    f"{len(winners['honor_roll'])}명")
-        col3.metric("Best Writer",   f"{len(winners['best_writer'])}명")
+        col1.metric("Perfect Score", f"{len(ps)}명")
+        col2.metric("Honor Roll",    f"{len(hr)}명")
+        col3.metric("Best Writer",   f"{len(bw)}명")
 
-        with st.expander("Perfect Score 수상자 목록"):
-            for s in winners["perfect_score"]:
-                st.write(f"- **{s['english_name']}** ({s['class']})")
+        st.markdown("#### 🏆 Perfect Score")
+        if ps:
+            st.dataframe(
+                pd.DataFrame([{"이름": s["english_name"], "반": s["class"]}
+                              for s in ps]),
+                hide_index=True, use_container_width=True,
+            )
 
-        with st.expander("Honor Roll 수상자 목록"):
-            for s in winners["honor_roll"]:
-                st.write(f"- **{s['english_name']}** ({s['class']}) — avg {s['average']}")
+        st.markdown("#### 🎖 Honor Roll")
+        if hr:
+            st.dataframe(
+                pd.DataFrame([{"이름": s["english_name"], "반": s["class"],
+                               "평균": s["average"]} for s in hr]),
+                hide_index=True, use_container_width=True,
+            )
 
-        with st.expander("Best Writer 수상자 목록"):
-            for s in winners["best_writer"]:
-                st.write(f"- **{s['english_name']}** ({s['class']}) — LC {s['lc']}점")
+        st.markdown("#### ✍️ Best Writer")
+        if bw:
+            st.dataframe(
+                pd.DataFrame([{"이름": s["english_name"], "반": s["class"],
+                               "LC점수": s["lc"]} for s in bw]),
+                hide_index=True, use_container_width=True,
+            )
 
-        # PDF 생성 (메모리에 저장)
+        # PDF 생성 (정렬 순서 유지, 메모리에 저장)
         with st.spinner("상장 PDF 생성 중..."):
             generated = []   # (award_type, folder, filename, pdf_bytes, student)
             errors    = []
             with tempfile.TemporaryDirectory() as tmpdir:
                 for award_type, folder, student_list in [
-                    ("perfect_score", "Perfect_Score", winners["perfect_score"]),
-                    ("honor_roll",    "Honor_Roll",    winners["honor_roll"]),
-                    ("best_writer",   "Best_Writer",   winners["best_writer"]),
+                    ("perfect_score", "Perfect_Score", ps),
+                    ("honor_roll",    "Honor_Roll",    hr),
+                    ("best_writer",   "Best_Writer",   bw),
                 ]:
                     for s in student_list:
                         safe_name  = s["english_name"].replace(" ", "_")
@@ -114,32 +144,33 @@ if uploaded:
             mime="application/zip",
         )
 
-        # ── 개별 다운로드 ─────────────────────────────────
+        # ── 개별 다운로드 (expander 없이, 상장별 섹션) ───────
         st.markdown("---")
         st.subheader("개별 다운로드")
 
-        for award_label, award_type in [
-            ("Perfect Score", "perfect_score"),
-            ("Honor Roll",    "honor_roll"),
-            ("Best Writer",   "best_writer"),
-        ]:
+        _LABEL = {
+            "perfect_score": "🏆 Perfect Score",
+            "honor_roll":    "🎖 Honor Roll",
+            "best_writer":   "✍️ Best Writer",
+        }
+        for award_type in ("perfect_score", "honor_roll", "best_writer"):
             group = [(fn, pb, s) for (at, _, fn, pb, s) in generated if at == award_type]
             if not group:
                 continue
-            with st.expander(f"{award_label} — {len(group)}명"):
-                for filename, pdf_bytes, s in group:
-                    col_preview, col_info = st.columns([3, 1])
-                    with col_preview:
-                        preview_png = pdf_to_preview_png(pdf_bytes)
-                        st.image(preview_png, use_container_width=True)
-                    with col_info:
-                        st.markdown(f"**{s['english_name']}**")
-                        st.caption(s["class"])
-                        st.download_button(
-                            label="PDF 다운로드",
-                            data=pdf_bytes,
-                            file_name=filename,
-                            mime="application/pdf",
-                            key=filename,
-                        )
-                    st.divider()
+            st.markdown(f"**{_LABEL[award_type]} — {len(group)}명**")
+            for idx, (filename, pdf_bytes, s) in enumerate(group):
+                col_prev, col_name, col_btn = st.columns([4, 3, 1])
+                with col_prev:
+                    st.image(pdf_to_preview_png(pdf_bytes), use_container_width=True)
+                with col_name:
+                    st.markdown(f"**{s['english_name']}**")
+                    st.caption(s["class"])
+                with col_btn:
+                    st.download_button(
+                        label="PDF",
+                        data=pdf_bytes,
+                        file_name=filename,
+                        mime="application/pdf",
+                        key=f"dl_{award_type}_{idx}",   # 고유 키 (DuplicateKey 방지)
+                    )
+            st.markdown("")  # 섹션 간 여백
