@@ -69,17 +69,9 @@ if st.session_state.get("show_campus_input"):
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-# 캠퍼스 변경 시 기준값 세션 초기화
+# 캠퍼스 설정 로드
 _campus_cfg = cfg.get_campus_cfg(campus)
-if st.session_state.get("_last_campus") != campus:
-    st.session_state["ps_min"]  = _campus_cfg["perfect_score_min"]
-    st.session_state["hr_min"]  = _campus_cfg["honor_roll_min"]
-    _bw = _campus_cfg["bw_min_lc"]
-    st.session_state["bw_gt"]   = _bw.get("GT",  27)
-    st.session_state["bw_mgt"]  = _bw.get("MGT", 27)
-    st.session_state["bw_s"]    = _bw.get("S",   27)
-    st.session_state["bw_mag"]  = _bw.get("MAG", 27)
-    st.session_state["_last_campus"] = campus
+_bw_def     = _campus_cfg["bw_min_lc"]
 
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
@@ -125,18 +117,32 @@ _award_labels = _campus_cfg.get("award_labels", {
     "best_sr":       "Best SR",
 })
 
-with st.expander("수상 기준 설정 (선택사항)", expanded=False):
-    st.caption(f"[{campus}] 캠퍼스 기준. 변경하면 해당 점수 기준으로 수상자가 검색됩니다.")
+# 캠퍼스 요약 카드 (항상 표시)
+st.info(
+    f"**{campus} 캠퍼스** | "
+    f"Perfect Score ≥ {_campus_cfg['perfect_score_min']:.0f}%　"
+    f"Honor Roll ≥ {_campus_cfg['honor_roll_min']:.0f}%　"
+    f"Best Writer LC ≥ GT {_bw_def.get('GT',27)} / MGT {_bw_def.get('MGT',27)} / "
+    f"S {_bw_def.get('S',27)} / MAG {_bw_def.get('MAG',27)}"
+)
+
+with st.expander("수상 기준 수정", expanded=False):
+    st.caption("변경하면 해당 점수 기준으로 수상자가 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
     cr1, cr2 = st.columns(2)
-    ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0, step=0.5, key="ps_min")
-    hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0, step=0.5, key="hr_min")
+    # 캠퍼스별로 key를 달리해 캠퍼스 변경 시 값이 초기화되도록 함
+    ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0,
+                               value=float(_campus_cfg["perfect_score_min"]),
+                               step=0.5, key=f"ps_min_{campus}")
+    hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0,
+                               value=float(_campus_cfg["honor_roll_min"]),
+                               step=0.5, key=f"hr_min_{campus}")
 
     st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
     bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
-    bw_gt  = bw_col1.number_input("GT",  0, 30, step=1, key="bw_gt")
-    bw_mgt = bw_col2.number_input("MGT", 0, 30, step=1, key="bw_mgt")
-    bw_s   = bw_col3.number_input("S",   0, 30, step=1, key="bw_s")
-    bw_mag = bw_col4.number_input("MAG", 0, 30, step=1, key="bw_mag")
+    bw_gt  = bw_col1.number_input("GT",  0, 30, value=_bw_def.get("GT",  27), step=1, key=f"bw_gt_{campus}")
+    bw_mgt = bw_col2.number_input("MGT", 0, 30, value=_bw_def.get("MGT", 27), step=1, key=f"bw_mgt_{campus}")
+    bw_s   = bw_col3.number_input("S",   0, 30, value=_bw_def.get("S",   27), step=1, key=f"bw_s_{campus}")
+    bw_mag = bw_col4.number_input("MAG", 0, 30, value=_bw_def.get("MAG", 27), step=1, key=f"bw_mag_{campus}")
     bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool((uploaded_monthly and month) or uploaded_sr)
