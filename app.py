@@ -65,42 +65,75 @@ if uploaded:
             for s in winners["best_writer"]:
                 st.write(f"- **{s['english_name']}** ({s['class']}) — LC {s['lc']}점")
 
-        # PDF 생성 + ZIP
+        # PDF 생성 (메모리에 저장)
         with st.spinner("상장 PDF 생성 중..."):
-            zip_buffer = io.BytesIO()
-            errors = []
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    for award_type, folder, student_list in [
-                        ("perfect_score", "Perfect_Score", winners["perfect_score"]),
-                        ("honor_roll",    "Honor_Roll",    winners["honor_roll"]),
-                        ("best_writer",   "Best_Writer",   winners["best_writer"]),
-                    ]:
-                        for s in student_list:
-                            safe_name  = s["english_name"].replace(" ", "_")
-                            safe_class = s["class"].replace(" ", "_").replace("/", "-")
-                            filename   = f"{safe_name}_{safe_class}.pdf"
-                            out_path   = os.path.join(tmpdir, filename)
-                            try:
-                                build_certificate(
-                                    award_type=award_type,
-                                    english_name=s["english_name"],
-                                    student_class=s["class"],
-                                    month=month,
-                                    output_path=out_path,
-                                )
-                                zf.write(out_path, f"{folder}/{filename}")
-                            except Exception as e:
-                                errors.append(f"{s['english_name']}: {e}")
+            generated = []   # (award_type, folder, filename, pdf_bytes, student)
+            errors    = []
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for award_type, folder, student_list in [
+                    ("perfect_score", "Perfect_Score", winners["perfect_score"]),
+                    ("honor_roll",    "Honor_Roll",    winners["honor_roll"]),
+                    ("best_writer",   "Best_Writer",   winners["best_writer"]),
+                ]:
+                    for s in student_list:
+                        safe_name  = s["english_name"].replace(" ", "_")
+                        safe_class = s["class"].replace(" ", "_").replace("/", "-")
+                        filename   = f"{safe_name}_{safe_class}.pdf"
+                        out_path   = os.path.join(tmpdir, filename)
+                        try:
+                            build_certificate(
+                                award_type=award_type,
+                                english_name=s["english_name"],
+                                student_class=s["class"],
+                                month=month,
+                                output_path=out_path,
+                            )
+                            with open(out_path, "rb") as f:
+                                pdf_bytes = f.read()
+                            generated.append((award_type, folder, filename, pdf_bytes, s))
+                        except Exception as e:
+                            errors.append(f"{s['english_name']}: {e}")
 
         if errors:
             st.warning("일부 상장 생성 실패:\n" + "\n".join(errors))
 
+        total = len(generated)
+        st.success(f"총 {total}개 상장 생성 완료!")
+
+        # ── ZIP 다운로드 ──────────────────────────────────
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for _, folder, filename, pdf_bytes, _ in generated:
+                zf.writestr(f"{folder}/{filename}", pdf_bytes)
+
         zip_name = f"{month.replace(' ', '_')}_상장.zip"
         st.download_button(
-            label=f"ZIP 다운로드 ({zip_name})",
+            label=f"전체 ZIP 다운로드 ({total}개)",
             data=zip_buffer.getvalue(),
             file_name=zip_name,
             mime="application/zip",
         )
-        st.success(f"총 {len(winners['perfect_score']) + len(winners['honor_roll']) + len(winners['best_writer'])}개 상장 생성 완료!")
+
+        # ── 개별 다운로드 ─────────────────────────────────
+        st.markdown("---")
+        st.subheader("개별 다운로드")
+
+        for award_label, award_type in [
+            ("Perfect Score", "perfect_score"),
+            ("Honor Roll",    "honor_roll"),
+            ("Best Writer",   "best_writer"),
+        ]:
+            group = [(fn, pb, s) for (at, _, fn, pb, s) in generated if at == award_type]
+            if not group:
+                continue
+            with st.expander(f"{award_label} — {len(group)}명"):
+                for filename, pdf_bytes, s in group:
+                    col_name, col_btn = st.columns([3, 1])
+                    col_name.write(f"**{s['english_name']}** ({s['class']})")
+                    col_btn.download_button(
+                        label="PDF",
+                        data=pdf_bytes,
+                        file_name=filename,
+                        mime="application/pdf",
+                        key=filename,
+                    )
