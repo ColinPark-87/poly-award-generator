@@ -14,6 +14,18 @@ COL_LC      = 9   # Lang. Composition
 COL_AVERAGE = 12
 
 
+def clean_class_name(cls: str) -> str:
+    """클래스명에서 요일/시간 표기 제거.
+    예: 'GT3 (MWF)3:10'   → 'GT3'
+        'MGT2(t/th)'       → 'MGT2'
+        'S1 (M/W/F) 4:20'  → 'S1'
+        'GT2 4:40'         → 'GT2'
+    """
+    cleaned = re.sub(r'\s*\([^)]*\)', '', cls)   # 괄호 그룹 제거
+    cleaned = re.sub(r'\s*\d+:\d+', '', cleaned) # 시간 표기(4:40 등) 제거
+    return cleaned.strip() if cleaned.strip() else cls
+
+
 def parse_student_name(full_name: str) -> tuple[str, str]:
     """'최윤아 (Elena Choi)' → ('최윤아', 'Elena Choi')"""
     match = re.search(r'\(([^)]+)\)', str(full_name))
@@ -50,7 +62,7 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             continue
         rows.append({
-            "class":   str(cls_raw).strip() if cls_raw else "",
+            "class":   clean_class_name(str(cls_raw).strip()) if cls_raw else "",
             "name":    str(name_raw).strip(),
             "lc":      lc,
             "average": avg,
