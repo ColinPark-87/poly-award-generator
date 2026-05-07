@@ -44,11 +44,20 @@ st.set_page_config(page_title="Poly 상장 생성기", layout="wide")
 st.title("Poly 상장 생성기")
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
+_CAMPUS_COLORS = {
+    "중계":     "#1B3F7A",
+    "광명":     "#1E6B4A",
+    "일산":     "#6B3A1E",
+    "목동":     "#4A1E6B",
+    "목동매그넷": "#1E556B",
+}
+_DEFAULT_COLOR = "#2C2C2C"
+
 if "campus_list" not in st.session_state:
     st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷"]
 
 _c1, _c2, _c3 = st.columns([1, 1, 2])
-campus = _c1.selectbox("캠퍼스", st.session_state["campus_list"], index=0, key="campus")
+campus = _c1.selectbox("캠퍼스 선택", st.session_state["campus_list"], index=0, key="campus")
 
 with _c2:
     st.markdown("<div style='margin-top:28px'>", unsafe_allow_html=True)
@@ -68,6 +77,26 @@ if st.session_state.get("show_campus_input"):
             st.session_state["show_campus_input"] = False
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+# 캠퍼스 배너
+_color = _CAMPUS_COLORS.get(campus, _DEFAULT_COLOR)
+st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg, {_color} 0%, {_color}cc 100%);
+    border-radius: 12px;
+    padding: 18px 28px;
+    margin: 8px 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+">
+    <span style="font-size:2rem;">📍</span>
+    <div>
+        <div style="color:rgba(255,255,255,0.7); font-size:0.8rem; letter-spacing:0.1em; text-transform:uppercase;">POLY LANGUAGE INSTITUTE</div>
+        <div style="color:white; font-size:1.6rem; font-weight:700; line-height:1.2;">{campus} 캠퍼스</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # 캠퍼스 설정 로드
 _campus_cfg = cfg.get_campus_cfg(campus)
