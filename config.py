@@ -50,7 +50,7 @@ NAME_FONT          = "DancingScript-Bold.ttf"
 # ── Date: Date 밑줄(y≈1295) 바로 위 ──────────────────────────
 # 폰트 크기 52px 기준 높이≈52px → top y = 1295 - 52 - 10gap = 1233
 # Date 라인 중심 X: 스크린샷 측정 기준 x≈565 (2340px 이미지)
-DATE_CENTER_X   = 645
+DATE_CENTER_X   = 706
 DATE_Y          = 1233
 DATE_FONT_SIZE  = 52
 DATE_COLOR      = (13, 27, 62)
