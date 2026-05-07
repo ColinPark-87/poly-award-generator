@@ -57,7 +57,18 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     return rows
 
 
-def select_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
+def select_winners(
+    rows: list[dict[str, Any]],
+    perfect_score_min: float = 100.0,
+    honor_roll_min:    float = 95.0,
+    best_writer_min_lc: int  = 0,
+) -> dict[str, list[dict]]:
+    """
+    수상자 선정.
+    perfect_score_min  : 이 값 이상이면 Perfect Score (기본 100)
+    honor_roll_min     : 이 값 이상 ~ perfect_score_min 미만이면 Honor Roll (기본 95)
+    best_writer_min_lc : Best Writer 자격 최소 LC 점수 (기본 0 = 제한 없음)
+    """
     perfect_score = []
     honor_roll    = []
     best_writer_map: dict[str, dict] = {}
@@ -75,18 +86,20 @@ def select_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
             "lc":           lc,
         }
 
-        if avg == 100.0:
+        if avg >= perfect_score_min:
             perfect_score.append(student)
-        elif avg >= 95.0:
+        elif avg >= honor_roll_min:
             honor_roll.append(student)
 
         # Best Writer: 학급별 LC 최고점, 동점시 Average 높은 1명
-        if cls not in best_writer_map:
-            best_writer_map[cls] = student
-        else:
-            cur = best_writer_map[cls]
-            if lc > cur["lc"] or (lc == cur["lc"] and avg > cur["average"]):
+        # best_writer_min_lc 미만이면 후보 제외
+        if lc >= best_writer_min_lc:
+            if cls not in best_writer_map:
                 best_writer_map[cls] = student
+            else:
+                cur = best_writer_map[cls]
+                if lc > cur["lc"] or (lc == cur["lc"] and avg > cur["average"]):
+                    best_writer_map[cls] = student
 
     return {
         "perfect_score": perfect_score,

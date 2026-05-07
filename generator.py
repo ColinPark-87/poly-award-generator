@@ -35,13 +35,13 @@ def _load_font_fit(filename: str, text: str, max_size: int, min_size: int,
 
 
 @functools.lru_cache(maxsize=None)
-def _scan_template_lines(pdf_path: str, dpi: int) -> tuple:
+def _scan_template_lines(pdf_path: str, dpi: int, page_index: int = 0) -> tuple:
     """
     템플릿 PDF에서 수평선 목록을 추출한다 (lru_cache로 한 번만 실행).
     반환: ((y, width), ...) 형태의 tuple (y 오름차순)
     """
     doc  = fitz.open(pdf_path)
-    page = doc[0]
+    page = doc[page_index]
     sc   = dpi / 72.0
     rows = []
     for p in page.get_drawings():
@@ -82,7 +82,7 @@ def pdf_to_preview_png(pdf_bytes: bytes, preview_width: int = 700) -> bytes:
     return png
 
 
-def _pdf_page_to_pil(pdf_path: str, page_index: int = 0) -> Image.Image:
+def _pdf_page_to_pil(pdf_path: str, page_index: int = 0) -> Image.Image:  # noqa: keep
     doc  = fitz.open(pdf_path)
     page = doc[page_index]
     mat  = fitz.Matrix(config.DPI / 72, config.DPI / 72)
@@ -99,21 +99,25 @@ def build_certificate(
     month:             str,
     output_path:       str,
     template_override: str | None = None,
+    page_index:        int | None = None,
 ) -> None:
     """
     상장 PDF 생성.
     award_type: 'perfect_score' | 'honor_roll' | 'best_writer'
+    page_index: PDF 내 사용할 페이지 번호 (0-based). None이면 config.TEMPLATE_PAGE 기본값 사용.
     """
     template_path = template_override or config.TEMPLATES[award_type]
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"템플릿 없음: {template_path}")
 
-    img  = _pdf_page_to_pil(template_path)
+    pidx = page_index if page_index is not None else config.TEMPLATE_PAGE.get(award_type, 0)
+
+    img  = _pdf_page_to_pil(template_path, pidx)
     draw = ImageDraw.Draw(img)
     w    = img.width
 
     # ── 선 위치 자동 감지 (캐시됨) ────────────────────────
-    lines       = _scan_template_lines(template_path, config.DPI)
+    lines       = _scan_template_lines(template_path, config.DPI, pidx)
     divider_y   = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK[award_type])
     date_line_y = _find_date_line_y(lines, config.DATE_LINE_Y_FALLBACK)
 

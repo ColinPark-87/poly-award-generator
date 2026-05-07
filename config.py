@@ -10,6 +10,14 @@ TEMPLATES = {
     "best_writer":   os.path.join(TEMPLATE_DIR, "best_writer.pdf"),
 }
 
+# 각 상장 유형에 사용할 PDF 페이지 인덱스 (0-based)
+# 앱 UI에서 사용자가 직접 선택 가능 (기본값)
+TEMPLATE_PAGE = {
+    "perfect_score": 0,
+    "honor_roll":    1,
+    "best_writer":   2,
+}
+
 # PDF → PNG 변환 해상도 (200 DPI → 2340×1655 px)
 DPI = 200
 
