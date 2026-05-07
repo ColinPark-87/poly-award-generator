@@ -93,7 +93,7 @@ if st.session_state.get("show_delete_input"):
                              label_visibility="collapsed", placeholder="비밀번호 입력")
     with _ok_col:
         if st.button("삭제 확인", key="btn_confirm_del"):
-            if pw == "poly7659!!":
+            if pw == "01077644950":
                 if campus in st.session_state["campus_list"] and len(st.session_state["campus_list"]) > 1:
                     st.session_state["campus_list"].remove(campus)
                 st.session_state["show_delete_input"] = False
