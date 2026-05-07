@@ -107,11 +107,17 @@ with up_col2:
 # ══════════════════════════════════════════════════════════
 with st.expander("수상 기준 설정 (선택사항)", expanded=False):
     st.caption("기준을 바꾸면 그 점수에 해당하는 아이들이 수상자로 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
-    cr1, cr2, cr3 = st.columns(3)
+    cr1, cr2 = st.columns(2)
     ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0, 100.0, step=0.5)
     hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0, 95.0,  step=0.5)
-    bw_min_lc = cr3.number_input("Best Writer 최소 LC 점수", 0, 30, 0, step=1,
-                                  help="반에서 1위여도 이 점수 미만이면 제외 (0 = 제한 없음)")
+
+    st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
+    bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
+    bw_gt  = bw_col1.number_input("GT",  0, 30, 0, step=1, key="bw_gt")
+    bw_mgt = bw_col2.number_input("MGT", 0, 30, 0, step=1, key="bw_mgt")
+    bw_s   = bw_col3.number_input("S",   0, 30, 0, step=1, key="bw_s")
+    bw_mag = bw_col4.number_input("MAG", 0, 30, 0, step=1, key="bw_mag")
+    bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool((uploaded_monthly and month) or uploaded_sr)
 if st.button("상장 생성하기", type="primary", disabled=not can_generate):
@@ -131,7 +137,7 @@ if st.button("상장 생성하기", type="primary", disabled=not can_generate):
                 rows,
                 perfect_score_min=float(ps_min),
                 honor_roll_min=float(hr_min),
-                best_writer_min_lc=int(bw_min_lc),
+                best_writer_min_lc=bw_min_lc,
             )
             os.unlink(tmp_path)
 

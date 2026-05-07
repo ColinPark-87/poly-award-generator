@@ -115,17 +115,25 @@ def select_sr_winners(rows: list[dict[str, Any]]) -> list[dict]:
     return list(winner_map.values())
 
 
+def _get_level(cls: str) -> str:
+    """클래스명에서 레벨 접두어 추출. 예: 'GT3' → 'GT', 'MGT2' → 'MGT'"""
+    m = re.match(r"^(GT|MGT|MAG|S)", cls)
+    return m.group(1) if m else ""
+
+
 def select_winners(
     rows: list[dict[str, Any]],
     perfect_score_min: float = 100.0,
     honor_roll_min:    float = 95.0,
-    best_writer_min_lc: int  = 0,
+    best_writer_min_lc = 0,
 ) -> dict[str, list[dict]]:
     """
     수상자 선정.
     perfect_score_min  : 이 값 이상이면 Perfect Score (기본 100)
     honor_roll_min     : 이 값 이상 ~ perfect_score_min 미만이면 Honor Roll (기본 95)
-    best_writer_min_lc : Best Writer 자격 최소 LC 점수 (기본 0 = 제한 없음)
+    best_writer_min_lc : Best Writer 자격 최소 LC 점수.
+                         int → 전 레벨 공통 기준
+                         dict → {'GT': 27, 'MGT': 25, 'S': 20, 'MAG': 20} 형태로 레벨별 기준
     """
     perfect_score = []
     honor_roll    = []
@@ -150,8 +158,13 @@ def select_winners(
             honor_roll.append(student)
 
         # Best Writer: 학급별 LC 최고점, 동점시 Average 높은 1명
-        # best_writer_min_lc 미만이면 후보 제외
-        if lc >= best_writer_min_lc:
+        if isinstance(best_writer_min_lc, dict):
+            level  = _get_level(cls)
+            min_lc = best_writer_min_lc.get(level, 0)
+        else:
+            min_lc = best_writer_min_lc
+
+        if lc >= min_lc:
             if cls not in best_writer_map:
                 best_writer_map[cls] = student
             else:
