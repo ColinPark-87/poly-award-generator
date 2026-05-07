@@ -43,9 +43,30 @@ st.set_page_config(page_title="Poly 상장 생성기", layout="wide")
 st.title("Poly 상장 생성기")
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
-_CAMPUSES = ["중계", "노원", "상계", "하계", "공릉", "묵동", "월계"]
-_campus_col, _ = st.columns([1, 3])
-campus = _campus_col.selectbox("캠퍼스", _CAMPUSES, index=0, key="campus")
+if "campus_list" not in st.session_state:
+    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷"]
+
+_c1, _c2, _c3 = st.columns([1, 1, 2])
+campus = _c1.selectbox("캠퍼스", st.session_state["campus_list"], index=0, key="campus")
+
+with _c2:
+    st.markdown("<div style='margin-top:28px'>", unsafe_allow_html=True)
+    if st.button("＋ 캠퍼스 추가", key="btn_add_campus"):
+        st.session_state["show_campus_input"] = True
+    st.markdown("</div>", unsafe_allow_html=True)
+
+if st.session_state.get("show_campus_input"):
+    _in_col, _ok_col = st.columns([2, 1])
+    new_campus = _in_col.text_input("새 캠퍼스 이름", key="new_campus_name", label_visibility="collapsed", placeholder="캠퍼스 이름 입력")
+    with _ok_col:
+        st.markdown("<div style='margin-top:4px'>", unsafe_allow_html=True)
+        if st.button("추가", key="btn_confirm_campus"):
+            name = new_campus.strip()
+            if name and name not in st.session_state["campus_list"]:
+                st.session_state["campus_list"].append(name)
+            st.session_state["show_campus_input"] = False
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
