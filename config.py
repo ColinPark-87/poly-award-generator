@@ -19,26 +19,31 @@ DPI = 200
 # Honor Roll: 타이틀 2줄(HONOR ROLL + AWARD) → "AWARDED TO" y≈497
 
 # ── 반/레벨 이름: AWARDED TO 바로 아래 ────────────────────────
-# 이미지: 2340×1655px / AWARDED TO 하단 y≈490
+# 이미지: 2340×1655px / AWARDED TO 하단 y≈490 (honor_roll y≈600)
 CLASS_Y = {
     "perfect_score": 520,
-    "honor_roll":    660,   # HONOR ROLL 타이틀 2줄 → 140px 아래
+    "honor_roll":    625,
     "best_writer":   520,
 }
 CLASS_FONT_SIZE = 52
 CLASS_COLOR     = (13, 27, 62)
 CLASS_FONT      = "Montserrat-Bold.ttf"
 
-# ── 학생 이름: 가로 구분선(y≈870) 바로 위 ────────────────────
-# 폰트 크기 160px 기준 높이 ≈160px → top y = 870 - 160 - 20gap = 690
+# ── 학생 이름: 가로 구분선 바로 위 ────────────────────────────
+# perfect_score/best_writer: 구분선 y≈870 → NAME_Y=690 (폰트 160px)
+# honor_roll: 구분선 y≈824, 공간 좁음 → NAME_Y=710 (폰트 110px)
 NAME_Y = {
     "perfect_score": 690,
-    "honor_roll":    790,   # honor_roll은 공간 좁아 조금 위로
+    "honor_roll":    710,
     "best_writer":   690,
 }
-NAME_FONT_SIZE     = 160          # 최대 폰트 크기 (이름 길이에 따라 자동 축소)
-NAME_FONT_SIZE_MIN = 70           # 최소 폰트 크기
-NAME_MAX_WIDTH     = 1600         # 이름이 차지할 수 있는 최대 px 너비
+NAME_FONT_SIZE = {             # award_type별 최대 폰트 크기
+    "perfect_score": 160,
+    "honor_roll":    110,      # 공간 제한으로 작게
+    "best_writer":   160,
+}
+NAME_FONT_SIZE_MIN = 70
+NAME_MAX_WIDTH     = 1600
 NAME_COLOR         = (13, 27, 62)
 NAME_FONT          = "DancingScript-Bold.ttf"
 

@@ -66,7 +66,7 @@ def build_certificate(
     # ── 이름 (길이에 따라 폰트 크기 자동 조절) ────────────
     name_font = _load_font_fit(
         config.NAME_FONT, english_name,
-        config.NAME_FONT_SIZE, config.NAME_FONT_SIZE_MIN,
+        config.NAME_FONT_SIZE[award_type], config.NAME_FONT_SIZE_MIN,
         config.NAME_MAX_WIDTH, draw,
     )
     name_y = config.NAME_Y[award_type]
