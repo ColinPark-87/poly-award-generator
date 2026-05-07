@@ -18,30 +18,35 @@ DPI = 200
 # Perfect Score / Best Writer: 타이틀 1줄 → "AWARDED TO" y≈330
 # Honor Roll: 타이틀 2줄(HONOR ROLL + AWARD) → "AWARDED TO" y≈497
 
-NAME_Y = {
-    "perfect_score": 470,
-    "honor_roll":    610,
-    "best_writer":   470,
-}
-NAME_FONT_SIZE     = 120          # 최대 폰트 크기 (이름 길이에 따라 자동 축소)
-NAME_FONT_SIZE_MIN = 60           # 최소 폰트 크기
-NAME_MAX_WIDTH     = 1500         # 이름이 차지할 수 있는 최대 px 너비 (2340 기준 ~64%)
-NAME_COLOR         = (13, 27, 62) # 다크 네이비
-NAME_FONT          = "DancingScript-Bold.ttf"
-
-# 반/레벨 이름: 학생 이름 바로 아래
+# ── 반/레벨 이름: AWARDED TO 바로 아래 ────────────────────────
+# 이미지: 2340×1655px / AWARDED TO 하단 y≈490
 CLASS_Y = {
-    "perfect_score": 625,
-    "honor_roll":    765,
-    "best_writer":   625,
+    "perfect_score": 520,
+    "honor_roll":    660,   # HONOR ROLL 타이틀 2줄 → 140px 아래
+    "best_writer":   520,
 }
-CLASS_FONT_SIZE = 55
+CLASS_FONT_SIZE = 52
 CLASS_COLOR     = (13, 27, 62)
 CLASS_FONT      = "Montserrat-Bold.ttf"
 
-# Date: 하단 좌측 Date 라인 위에 중앙 정렬
-DATE_CENTER_X   = 338             # Date 라인 중심 X 좌표 (2340px 기준)
-DATE_Y          = 1258
-DATE_FONT_SIZE  = 42
+# ── 학생 이름: 가로 구분선(y≈870) 바로 위 ────────────────────
+# 폰트 크기 160px 기준 높이 ≈160px → top y = 870 - 160 - 20gap = 690
+NAME_Y = {
+    "perfect_score": 690,
+    "honor_roll":    790,   # honor_roll은 공간 좁아 조금 위로
+    "best_writer":   690,
+}
+NAME_FONT_SIZE     = 160          # 최대 폰트 크기 (이름 길이에 따라 자동 축소)
+NAME_FONT_SIZE_MIN = 70           # 최소 폰트 크기
+NAME_MAX_WIDTH     = 1600         # 이름이 차지할 수 있는 최대 px 너비
+NAME_COLOR         = (13, 27, 62)
+NAME_FONT          = "DancingScript-Bold.ttf"
+
+# ── Date: Date 밑줄(y≈1295) 바로 위 ──────────────────────────
+# 폰트 크기 52px 기준 높이≈52px → top y = 1295 - 52 - 10gap = 1233
+# Date 라인 중심 X: 스크린샷 측정 기준 x≈565 (2340px 이미지)
+DATE_CENTER_X   = 565
+DATE_Y          = 1233
+DATE_FONT_SIZE  = 52
 DATE_COLOR      = (13, 27, 62)
 DATE_FONT       = "Montserrat-Bold.ttf"
