@@ -63,6 +63,15 @@ with _c2:
     st.markdown("<div style='margin-top:28px'>", unsafe_allow_html=True)
     if st.button("＋ 캠퍼스 추가", key="btn_add_campus"):
         st.session_state["show_campus_input"] = True
+        st.session_state["show_delete_input"]  = False
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with _c3:
+    st.markdown("<div style='margin-top:28px'>", unsafe_allow_html=True)
+    if st.button("🗑 캠퍼스 삭제", key="btn_del_campus"):
+        st.session_state["show_delete_input"] = True
+        st.session_state["show_campus_input"] = False
+        st.session_state["del_pw_wrong"]      = False
     st.markdown("</div>", unsafe_allow_html=True)
 
 if st.session_state.get("show_campus_input"):
@@ -77,6 +86,28 @@ if st.session_state.get("show_campus_input"):
             st.session_state["show_campus_input"] = False
             st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+if st.session_state.get("show_delete_input"):
+    _pw_col, _ok_col, _cancel_col = st.columns([2, 1, 1])
+    pw = _pw_col.text_input("비밀번호 입력", type="password", key="del_pw",
+                             label_visibility="collapsed", placeholder="비밀번호 입력")
+    with _ok_col:
+        if st.button("삭제 확인", key="btn_confirm_del"):
+            if pw == "poly7659!!":
+                if campus in st.session_state["campus_list"] and len(st.session_state["campus_list"]) > 1:
+                    st.session_state["campus_list"].remove(campus)
+                st.session_state["show_delete_input"] = False
+                st.session_state["del_pw_wrong"]      = False
+                st.rerun()
+            else:
+                st.session_state["del_pw_wrong"] = True
+    with _cancel_col:
+        if st.button("취소", key="btn_cancel_del"):
+            st.session_state["show_delete_input"] = False
+            st.session_state["del_pw_wrong"]      = False
+            st.rerun()
+    if st.session_state.get("del_pw_wrong"):
+        st.error("비밀번호가 틀렸습니다.")
 
 # 캠퍼스 배너
 _color = _CAMPUS_COLORS.get(campus, _DEFAULT_COLOR)
