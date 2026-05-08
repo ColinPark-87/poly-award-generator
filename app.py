@@ -31,7 +31,8 @@ def _ensure_fonts():
     fonts = {
         "DancingScript-Bold.ttf":  "https://github.com/google/fonts/raw/main/ofl/dancingscript/static/DancingScript-Bold.ttf",
         "Montserrat-Bold.ttf":     "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf",
-        "PinyonScript-Regular.ttf": "https://github.com/google/fonts/raw/main/ofl/pinyonscript/PinyonScript-Regular.ttf",
+        "PinyonScript-Regular.ttf":  "https://github.com/google/fonts/raw/main/ofl/pinyonscript/PinyonScript-Regular.ttf",
+        "GreatVibes-Regular.ttf":    "https://github.com/google/fonts/raw/main/ofl/greatvibes/GreatVibes-Regular.ttf",
     }
     for name, url in fonts.items():
         path = os.path.join(font_dir, name)

@@ -174,13 +174,14 @@ def _inject_jungbal_text_pdf(
     """
     정발 템플릿 PDF에 날짜/반이름 직접 삽입.
 
-    전략: 글자마다 폰트 우선순위 결정
-      1) 내장 PalaceScriptMT에 글리프 있으면 → 그대로 사용 (템플릿과 완전 동일)
-      2) 없으면 (숫자, Sep/Nov/Dec 일부 대소문자) → Pinyon Script fallback
+    전략: GreatVibes 단일 폰트로 통일
+      - PalaceScriptMT와 획 굵기·스타일 가장 유사한 무료 전체 폰트
+      - 글자/숫자 혼용 없이 단일 폰트로 시각적 일관성 확보
+      - extra_text: 오른쪽 여백(x=678pt) 초과 시 폰트 크기 자동 축소
 
     공통 조건:
       - 색상: 템플릿 텍스트와 동일한 검정 (0,0,0)
-      - 크기: 40pt (템플릿 텍스트와 동일)
+      - 크기: 40pt 기준, extra_text는 오버플로우 시 축소
       - 기준선: span origin y 정확히 사용
     """
     doc  = fitz.open(template_path)
@@ -189,33 +190,22 @@ def _inject_jungbal_text_pdf(
     bg_fill  = (231 / 255, 231 / 255, 232 / 255)  # 템플릿 배경색
     text_clr = (0.0, 0.0, 0.0)                     # 템플릿과 동일한 검정
     fontsize = 40.0
+    RIGHT_MARGIN = 678.0  # POLY Jeongbal 열 시작 x (오버플로우 경계)
 
-    # ── 내장 PalaceScriptMT 추출 ──────────────────────────
-    palace_font = None
-    for f in page.get_fonts(full=True):
-        if "PalaceScript" in f[3]:
-            fd = doc.extract_font(f[0])
-            if fd[3]:
-                palace_font = fitz.Font(fontbuffer=fd[3])
-            break
+    # ── GreatVibes 로드 (PalaceScriptMT와 획 굵기 가장 유사) ──
+    gv_path = os.path.join(config.FONT_DIR, "GreatVibes-Regular.ttf")
+    if not os.path.exists(gv_path):
+        raise FileNotFoundError(f"GreatVibes 폰트 없음: {gv_path}")
+    gv_font = fitz.Font(fontfile=gv_path)
 
-    # ── Pinyon Script (숫자·누락 글자 fallback) ──────────
-    pinyon_path = os.path.join(config.FONT_DIR, "PinyonScript-Regular.ttf")
-    pinyon_font = fitz.Font(fontfile=pinyon_path) if os.path.exists(pinyon_path) else palace_font
+    def _text_width(text: str, fs: float) -> float:
+        return sum(gv_font.text_length(ch, fontsize=fs) for ch in text)
 
-    def _pick_font(ch: str) -> fitz.Font | None:
-        """글자별 폰트 선택: PalaceScriptMT 우선, 없으면 Pinyon."""
-        if palace_font and palace_font.has_glyph(ord(ch)):
-            return palace_font
-        return pinyon_font
-
-    def _tw_append(tw: fitz.TextWriter, x: float, y: float, text: str) -> None:
-        """글자마다 최적 폰트로 삽입, x를 글자 폭만큼 전진."""
+    def _tw_append(tw: fitz.TextWriter, x: float, y: float,
+                   text: str, fs: float) -> None:
         for ch in text:
-            font = _pick_font(ch)
-            if font:
-                tw.append(fitz.Point(x, y), ch, font=font, fontsize=fontsize)
-                x += font.text_length(ch, fontsize=fontsize)
+            tw.append(fitz.Point(x, y), ch, font=gv_font, fontsize=fs)
+            x += gv_font.text_length(ch, fontsize=fs)
 
     # ── span에서 ___ 포함 줄의 정확한 기준선 y · x 추출 ──
     page_h = page.rect.height
@@ -223,6 +213,15 @@ def _inject_jungbal_text_pdf(
     baseline_extra = None
     date_x_span    = None
     extra_x_span   = None
+
+    # PalaceScriptMT로 prefix 폭 계산 (span origin + prefix width = blank 시작 x)
+    palace_font_calc = None
+    for f in page.get_fonts(full=True):
+        if "PalaceScript" in f[3]:
+            fd = doc.extract_font(f[0])
+            if fd[3]:
+                palace_font_calc = fitz.Font(fontbuffer=fd[3])
+            break
 
     for b in page.get_text("dict")["blocks"]:
         if b["type"] != 0:
@@ -232,12 +231,9 @@ def _inject_jungbal_text_pdf(
                 if "___" not in span["text"]:
                     continue
                 oy = span["origin"][1]
-                # span 내에서 ___ 시작 x를 정확히 계산
                 prefix = span["text"].split("_")[0]
-                prefix_w = fitz.Font(fontbuffer=doc.extract_font(
-                    next(f[0] for f in page.get_fonts(full=True)
-                         if "PalaceScript" in f[3]))[3]
-                ).text_length(prefix, fontsize=span["size"]) if palace_font else 0
+                prefix_w = (palace_font_calc.text_length(prefix, fontsize=span["size"])
+                            if palace_font_calc else 0)
                 x_start = span["origin"][0] + prefix_w
 
                 if oy > page_h * 0.65:
@@ -250,7 +246,6 @@ def _inject_jungbal_text_pdf(
                         extra_x_span   = x_start
 
     # ── ___ 패턴 위치 찾기 · 배경 덮기 ───────────────────
-    # x는 span 계산 우선, 없을 때만 search_for 사용
     date_x_hit  = None
     extra_x_hit = None
 
@@ -270,10 +265,18 @@ def _inject_jungbal_text_pdf(
 
     # ── TextWriter로 삽입 ─────────────────────────────────
     tw = fitz.TextWriter(page.rect, color=text_clr)
+
     if date_x is not None and baseline_date is not None:
-        _tw_append(tw, date_x, baseline_date, date_text)
+        _tw_append(tw, date_x, baseline_date, date_text, fontsize)
+
     if extra_x is not None and baseline_extra is not None and extra_text:
-        _tw_append(tw, extra_x, baseline_extra, extra_text)
+        # 오른쪽 여백 초과 시 폰트 크기 자동 축소
+        avail_w = RIGHT_MARGIN - extra_x
+        fs = fontsize
+        while fs >= 20.0 and _text_width(extra_text, fs) > avail_w:
+            fs -= 1.0
+        _tw_append(tw, extra_x, baseline_extra, extra_text, fs)
+
     tw.write_text(page)
 
     pdf_bytes = doc.tobytes()
