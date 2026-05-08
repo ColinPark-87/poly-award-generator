@@ -109,8 +109,8 @@ JUNGBAL_AWARD_TYPES = {
 JUNGBAL_DATE_BBOX_FALLBACK = (1190, 1087, 1468, 1198)
 # 반/레벨 이름 자리표시자 폴백 bbox (monthly/level winner 전용)
 JUNGBAL_EXTRA_BBOX_FALLBACK = (1439, 959, 1773, 1070)
-# 정발 자리표시자용 폰트: 템플릿 PalaceScriptMT와 유사한 스크립트체
-JUNGBAL_SCRIPT_FONT = "DancingScript-Bold.ttf"
+# 정발 전용 폰트: PalaceScriptMT와 가장 유사한 무료 스크립트체 (이름·반·날짜 통일)
+JUNGBAL_SCRIPT_FONT = "PinyonScript-Regular.ttf"
 # 자리표시자용 폰트 크기 — 템플릿 원본 40pt × (200/72) ≈ 111px, 여유를 두고 80
 JUNGBAL_PLACEHOLDER_FONT_SIZE = 80
 

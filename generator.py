@@ -268,7 +268,9 @@ def build_certificate(
     w    = img.width
 
     # ── 반/레벨 이름 (AWARDED TO 아래 고정 Y) ─────────────
-    class_font = _load_font(config.CLASS_FONT, config.CLASS_FONT_SIZE)
+    # 정발: PalaceScriptMT와 유사한 Pinyon Script로 통일
+    _class_font_file = config.JUNGBAL_SCRIPT_FONT if is_jungbal else config.CLASS_FONT
+    class_font = _load_font(_class_font_file, config.CLASS_FONT_SIZE)
     class_y    = config.CLASS_Y.get(award_type, 520)
     _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
 
@@ -276,8 +278,9 @@ def build_certificate(
     lines     = _scan_template_lines(template_path, config.DPI, 0)
     divider_y = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK.get(award_type, 870))
 
+    _name_font_file = config.JUNGBAL_SCRIPT_FONT if is_jungbal else config.NAME_FONT
     name_font = _load_font_fit(
-        config.NAME_FONT, english_name,
+        _name_font_file, english_name,
         config.NAME_FONT_SIZE.get(award_type, 140), config.NAME_FONT_SIZE_MIN,
         config.NAME_MAX_WIDTH, draw,
     )
