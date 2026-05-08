@@ -12,6 +12,7 @@ COL_CLASS         = 1
 COL_LEVEL         = 2
 COL_NAME          = 4
 COL_LC            = 9   # Lang. Composition
+COL_TOTAL         = 11  # TOTAL (LC 제외 합계)
 COL_AVERAGE       = 12
 COL_CLASS_RANKING = 13
 COL_LEVEL_RANKING = 14
@@ -55,6 +56,7 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     for row in ws.iter_rows(min_row=3, values_only=True):
         name_raw  = row[COL_NAME]
         lc_raw    = row[COL_LC]
+        total_raw = row[COL_TOTAL] if len(row) > COL_TOTAL else None
         avg_raw   = row[COL_AVERAGE]
         cls_raw   = row[COL_CLASS]
         level_raw = row[COL_LEVEL] if len(row) > COL_LEVEL else None
@@ -63,8 +65,9 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
         if not name_raw or avg_raw is None:
             continue
         try:
-            lc  = int(lc_raw) if lc_raw is not None else 0
-            avg = float(avg_raw)
+            lc    = int(lc_raw) if lc_raw is not None else 0
+            total = int(total_raw) if total_raw is not None else 0
+            avg   = float(avg_raw)
         except (TypeError, ValueError):
             continue
         rows.append({
@@ -72,6 +75,7 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
             "level":         str(level_raw).strip() if level_raw else "",
             "name":          str(name_raw).strip(),
             "lc":            lc,
+            "total":         total,
             "average":       avg,
             "class_ranking": str(cls_rank).strip() if cls_rank else "",
             "level_ranking": str(lvl_rank).strip() if lvl_rank else "",
@@ -236,13 +240,14 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
             "level":         row["level"],
             "average":       row["average"],
             "lc":            row["lc"],
+            "total":         row["total"],
             "class_ranking": row["class_ranking"],
             "level_ranking": row["level_ranking"],
         }
 
     for level_rows in by_level.values():
         # 평균 내림차순 → LC 내림차순으로 최고 학생 선정
-        best = max(level_rows, key=lambda r: (r["average"] + r["lc"], r["lc"]))
+        best = max(level_rows, key=lambda r: (r["total"] + r["lc"], r["lc"]))
         for row in level_rows:
             s = _make_student(row)
             if row["class"] == best["class"]:
