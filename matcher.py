@@ -11,11 +11,25 @@ MONTHS = [
 COL_CLASS         = 1
 COL_LEVEL         = 2
 COL_NAME          = 4
+COL_ENGLISH       = 6   # English
+COL_SPEECH        = 7   # Speech Building
+COL_FOUNDATIONS   = 8   # Eng. Foundations
 COL_LC            = 9   # Lang. Composition
-COL_TOTAL         = 11  # TOTAL (LC 제외 합계)
+COL_NF            = 10  # NF Studies
+COL_TOTAL         = 11  # TOTAL (English+Speech+Foundations 합계, LC/NF 미포함)
 COL_AVERAGE       = 12
 COL_CLASS_RANKING = 13
 COL_LEVEL_RANKING = 14
+
+# 정발 캠퍼스 점수 가중치 키 — UI/config/계산 모두에서 같은 키 사용
+JUNGBAL_SUBJECT_KEYS = ("english", "speech", "foundations", "lc", "nf")
+JUNGBAL_DEFAULT_WEIGHTS: dict[str, float] = {
+    "english":     1.0,
+    "speech":      1.0,
+    "foundations": 1.0,
+    "lc":          1.0,
+    "nf":          0.0,
+}
 
 
 def clean_class_name(cls: str) -> str:
@@ -49,6 +63,16 @@ def extract_month_from_filename(filename: str) -> str:
     return ""
 
 
+def _to_int(v: Any) -> int:
+    """엑셀 셀 → int. None/빈 문자열/숫자 아닌 값은 0."""
+    if v is None:
+        return 0
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
 def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
@@ -62,11 +86,15 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
         level_raw = row[COL_LEVEL] if len(row) > COL_LEVEL else None
         cls_rank  = row[COL_CLASS_RANKING] if len(row) > COL_CLASS_RANKING else None
         lvl_rank  = row[COL_LEVEL_RANKING] if len(row) > COL_LEVEL_RANKING else None
+        eng_raw   = row[COL_ENGLISH]     if len(row) > COL_ENGLISH     else None
+        sp_raw    = row[COL_SPEECH]      if len(row) > COL_SPEECH      else None
+        fnd_raw   = row[COL_FOUNDATIONS] if len(row) > COL_FOUNDATIONS else None
+        nf_raw    = row[COL_NF]          if len(row) > COL_NF          else None
         if not name_raw or avg_raw is None:
             continue
         try:
-            lc    = int(lc_raw) if lc_raw is not None else 0
-            total = int(total_raw) if total_raw is not None else 0
+            lc    = _to_int(lc_raw)
+            total = _to_int(total_raw)
             avg   = float(avg_raw)
         except (TypeError, ValueError):
             continue
@@ -74,7 +102,11 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
             "class":         clean_class_name(str(cls_raw).strip()) if cls_raw else "",
             "level":         str(level_raw).strip() if level_raw else "",
             "name":          str(name_raw).strip(),
+            "english":       _to_int(eng_raw),
+            "speech":        _to_int(sp_raw),
+            "foundations":   _to_int(fnd_raw),
             "lc":            lc,
+            "nf":            _to_int(nf_raw),
             "total":         total,
             "average":       avg,
             "class_ranking": str(cls_rank).strip() if cls_rank else "",
@@ -204,25 +236,39 @@ def select_winners(
     }
 
 
-def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
+def select_jungbal_winners(
+    rows: list[dict[str, Any]],
+    weights: dict[str, float] | None = None,
+) -> dict[str, list[dict]]:
     """
     정발 캠퍼스 수상자 선정.
 
-    로직 (LC도 하나의 과목으로 동등 취급, 동점은 공동 수상):
-    1) 반별로 Total + LC 합산 점수가 가장 높은 학생 = 반 1등.
-       동점이면 모두 반 1등 (공동).
-       (Excel Class Ranking 열은 LC 미반영이라 사용하지 않음)
+    weights: 과목별 가중치 dict.
+        {"english": 1.0, "speech": 1.0, "foundations": 1.0, "lc": 1.0, "nf": 0.0}
+        None이면 JUNGBAL_DEFAULT_WEIGHTS 사용.
+        지정되지 않은 과목은 0으로 취급.
+
+    로직 (모든 과목을 가중치로 합산, 동점은 공동 수상):
+    1) 반별로 가중 합산 점수가 가장 높은 학생 = 반 1등 (동점이면 공동).
+       (Excel Class Ranking 열은 LC/NF 미반영이라 사용하지 않음)
     2) 반 1등을 level(Col 2)별로 그룹화
-    3) 레벨 내 반 1등 중 Total+LC 최고 점수와 같은 학생 → Achievement Certificate (공동 가능)
+    3) 레벨 내 반 1등 중 합산 점수 최고와 같은 학생 → Achievement Certificate (공동 가능)
        나머지 반 1등 → Monthly Test Winner
-    (Note: Excel Level Ranking 열도 전체 캠퍼스 통합 순위라 사용하지 않음)
     """
     from collections import defaultdict
 
-    def _score(r: dict) -> int:
-        return r["total"] + r["lc"]
+    w = dict(JUNGBAL_DEFAULT_WEIGHTS)
+    if weights:
+        for k, v in weights.items():
+            try:
+                w[k] = float(v)
+            except (TypeError, ValueError):
+                pass
 
-    # ── Step 1: 반별 1등을 Total+LC 기준으로 직접 산출 (동점 모두 포함) ──
+    def _score(r: dict) -> float:
+        return sum(r.get(k, 0) * w.get(k, 0) for k in JUNGBAL_SUBJECT_KEYS)
+
+    # ── Step 1: 반별 1등을 가중 합산 기준으로 직접 산출 (동점 모두 포함) ──
     by_class: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
         by_class[row["class"]].append(row)
@@ -253,6 +299,7 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
             "average":       row["average"],
             "lc":            row["lc"],
             "total":         row["total"],
+            "score":         _score(row),
             "class_ranking": row["class_ranking"],
             "level_ranking": row["level_ranking"],
         }

@@ -58,6 +58,13 @@
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
     "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "score_weights": {
+      "english": 1.0,
+      "speech": 1.0,
+      "foundations": 1.0,
+      "lc": 1.0,
+      "nf": 0.0
+    },
     "award_labels": {
       "achievement_certificate": "Achievement Certificate",
       "monthly_test_winner": "Monthly Test Winner",
