@@ -357,8 +357,21 @@ def poly_header(title: str, subtitle: str = "", eyebrow: str = "ACADEMY"):
     )
 
 
+_CAMPUS_COLORS: dict[str, tuple[str, str]] = {
+    # (gradient-from, gradient-to)
+    "중계":     ("#002F65", "#004EA2"),   # Poly 로열 블루 (기본)
+    "광명":     ("#1a5c3a", "#2e9e62"),   # 에메랄드 그린
+    "일산":     ("#3d1a6e", "#7b3fc4"),   # 바이올렛 퍼플
+    "목동":     ("#7a2800", "#c84800"),   # 브릭 오렌지
+    "목동매그넷": ("#6b006b", "#b800b8"), # 마젠타
+    "정발":     ("#004d5a", "#008099"),   # 틸 (청록)
+}
+_CAMPUS_COLORS_DEFAULT = ("#002F65", "#004EA2")
+
+
 def poly_campus_banner(campus_name: str, term: str = ""):
-    """Royal-blue banner: Poly emblem + campus name + term tag."""
+    """캠퍼스별 고유 컬러 배너: Poly emblem + campus name + term tag."""
+    c_from, c_to = _CAMPUS_COLORS.get(campus_name, _CAMPUS_COLORS_DEFAULT)
     em = _emblem_uri()
     mark_html = (
         f'<img src="{em}" alt="Poly" class="emblem" />'
@@ -367,7 +380,7 @@ def poly_campus_banner(campus_name: str, term: str = ""):
     )
     st.markdown(
         f"""
-        <div class="poly-banner">
+        <div class="poly-banner" style="background: linear-gradient(135deg, {c_from} 0%, {c_to} 100%);">
           {mark_html}
           <div class="body">
             <h2>{html.escape(campus_name)} 캠퍼스</h2>
