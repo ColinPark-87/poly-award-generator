@@ -400,6 +400,7 @@ if _btn_generate:
         "errors": errors,
         "month": month,
         "is_jungbal": is_jungbal_campus,
+        "jungbal_formula": _formula if is_jungbal_campus else None,
         "zip_bytes": zip_buffer.getvalue(),
         "zip_name": f"{(month or 'SR').replace(' ', '_')}_상장.zip",
     }
@@ -425,6 +426,16 @@ if "result" in st.session_state:
     ev_jb_ach = ev_jb_mw = None
 
     if _is_jb:
+        # 가중 합산 점수 컬럼 헤더 — 02 섹션과 동일한 공식 표기 사용
+        _score_col = f"{r.get('jungbal_formula') or 'Total + LC'} 점수"
+
+        def _fmt_score(v):
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return v
+            return int(f) if f == int(f) else round(f, 1)
+
         # ── 정발 수상자 명단 (2컬럼) ─────────────────────
         col1, col2 = st.columns(2, gap="small")
         with col1:
@@ -433,7 +444,11 @@ if "result" in st.session_state:
                 f'<span class="cnt">{len(jb_ach)}</span></div>', unsafe_allow_html=True)
             if jb_ach:
                 ev_jb_ach = st.dataframe(
-                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "레벨랭킹": s["level_ranking"]} for s in jb_ach]),
+                    pd.DataFrame([{
+                        "이름": s["english_name"],
+                        "반": s["class"],
+                        _score_col: _fmt_score(s.get("score", s["total"] + s["lc"])),
+                    } for s in jb_ach]),
                     hide_index=True, use_container_width=True,
                     selection_mode="single-row", on_select="rerun", key="sel_jb_ach",
                 )
@@ -445,7 +460,11 @@ if "result" in st.session_state:
                 f'<span class="cnt">{len(jb_mw)}</span></div>', unsafe_allow_html=True)
             if jb_mw:
                 ev_jb_mw = st.dataframe(
-                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "반랭킹": s["class_ranking"]} for s in jb_mw]),
+                    pd.DataFrame([{
+                        "이름": s["english_name"],
+                        "반": s["class"],
+                        _score_col: _fmt_score(s.get("score", s["total"] + s["lc"])),
+                    } for s in jb_mw]),
                     hide_index=True, use_container_width=True,
                     selection_mode="single-row", on_select="rerun", key="sel_jb_mw",
                 )
