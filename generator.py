@@ -172,10 +172,16 @@ def _inject_jungbal_text_pdf(
     extra_text: str | None,
 ) -> bytes:
     """
-    정발 템플릿 PDF에 날짜/반이름을 Pinyon Script로 직접 삽입.
-    - 색상: 템플릿 텍스트와 동일한 검정(0,0,0)
-    - 크기: 템플릿 텍스트와 동일한 40pt
-    - 기준선: 텍스트 span의 origin y를 직접 사용
+    정발 템플릿 PDF에 날짜/반이름 직접 삽입.
+
+    전략: 글자마다 폰트 우선순위 결정
+      1) 내장 PalaceScriptMT에 글리프 있으면 → 그대로 사용 (템플릿과 완전 동일)
+      2) 없으면 (숫자, Sep/Nov/Dec 일부 대소문자) → Pinyon Script fallback
+
+    공통 조건:
+      - 색상: 템플릿 텍스트와 동일한 검정 (0,0,0)
+      - 크기: 40pt (템플릿 텍스트와 동일)
+      - 기준선: span origin y 정확히 사용
     """
     doc  = fitz.open(template_path)
     page = doc[0]
@@ -184,53 +190,90 @@ def _inject_jungbal_text_pdf(
     text_clr = (0.0, 0.0, 0.0)                     # 템플릿과 동일한 검정
     fontsize = 40.0
 
-    # ── Pinyon Script 로드 ────────────────────────────────
-    pinyon_path = os.path.join(config.FONT_DIR, "PinyonScript-Regular.ttf")
-    if not os.path.exists(pinyon_path):
-        raise FileNotFoundError(f"PinyonScript 폰트 없음: {pinyon_path}")
-    pinyon_font = fitz.Font(fontfile=pinyon_path)
+    # ── 내장 PalaceScriptMT 추출 ──────────────────────────
+    palace_font = None
+    for f in page.get_fonts(full=True):
+        if "PalaceScript" in f[3]:
+            fd = doc.extract_font(f[0])
+            if fd[3]:
+                palace_font = fitz.Font(fontbuffer=fd[3])
+            break
 
-    # ── 텍스트 span에서 ___ 가 포함된 줄의 정확한 기준선 y 추출 ──
+    # ── Pinyon Script (숫자·누락 글자 fallback) ──────────
+    pinyon_path = os.path.join(config.FONT_DIR, "PinyonScript-Regular.ttf")
+    pinyon_font = fitz.Font(fontfile=pinyon_path) if os.path.exists(pinyon_path) else palace_font
+
+    def _pick_font(ch: str) -> fitz.Font | None:
+        """글자별 폰트 선택: PalaceScriptMT 우선, 없으면 Pinyon."""
+        if palace_font and palace_font.has_glyph(ord(ch)):
+            return palace_font
+        return pinyon_font
+
+    def _tw_append(tw: fitz.TextWriter, x: float, y: float, text: str) -> None:
+        """글자마다 최적 폰트로 삽입, x를 글자 폭만큼 전진."""
+        for ch in text:
+            font = _pick_font(ch)
+            if font:
+                tw.append(fitz.Point(x, y), ch, font=font, fontsize=fontsize)
+                x += font.text_length(ch, fontsize=fontsize)
+
+    # ── span에서 ___ 포함 줄의 정확한 기준선 y · x 추출 ──
     page_h = page.rect.height
     baseline_date  = None
     baseline_extra = None
+    date_x_span    = None
+    extra_x_span   = None
+
     for b in page.get_text("dict")["blocks"]:
         if b["type"] != 0:
             continue
         for line in b["lines"]:
             for span in line["spans"]:
-                if "___" in span["text"]:
-                    oy = span["origin"][1]
-                    if oy > page_h * 0.65:
-                        if baseline_date is None:
-                            baseline_date = oy
-                    else:
-                        if baseline_extra is None:
-                            baseline_extra = oy
+                if "___" not in span["text"]:
+                    continue
+                oy = span["origin"][1]
+                # span 내에서 ___ 시작 x를 정확히 계산
+                prefix = span["text"].split("_")[0]
+                prefix_w = fitz.Font(fontbuffer=doc.extract_font(
+                    next(f[0] for f in page.get_fonts(full=True)
+                         if "PalaceScript" in f[3]))[3]
+                ).text_length(prefix, fontsize=span["size"]) if palace_font else 0
+                x_start = span["origin"][0] + prefix_w
+
+                if oy > page_h * 0.65:
+                    if baseline_date is None:
+                        baseline_date = oy
+                        date_x_span   = x_start
+                else:
+                    if baseline_extra is None:
+                        baseline_extra = oy
+                        extra_x_span   = x_start
 
     # ── ___ 패턴 위치 찾기 · 배경 덮기 ───────────────────
-    date_x  = None
-    extra_x = None
+    # x는 span 계산 우선, 없을 때만 search_for 사용
+    date_x_hit  = None
+    extra_x_hit = None
 
     for pattern in ["______", "_____", "____", "___"]:
         for h in page.search_for(pattern):
             r = fitz.Rect(h.x0 - 2, h.y0 - 1, h.x1 + 2, h.y1 + 1)
             page.draw_rect(r, color=None, fill=bg_fill)
             if h.y0 > page_h * 0.65:
-                if date_x is None:
-                    date_x = h.x0
+                if date_x_hit is None:
+                    date_x_hit = h.x0
             else:
-                if extra_x is None:
-                    extra_x = h.x0
+                if extra_x_hit is None:
+                    extra_x_hit = h.x0
 
-    # ── 텍스트 삽입 (Pinyon Script, 검정, 정확한 기준선) ──
+    date_x  = date_x_span  if date_x_span  is not None else date_x_hit
+    extra_x = extra_x_span if extra_x_span is not None else extra_x_hit
+
+    # ── TextWriter로 삽입 ─────────────────────────────────
     tw = fitz.TextWriter(page.rect, color=text_clr)
     if date_x is not None and baseline_date is not None:
-        tw.append(fitz.Point(date_x, baseline_date), date_text,
-                  font=pinyon_font, fontsize=fontsize)
+        _tw_append(tw, date_x, baseline_date, date_text)
     if extra_x is not None and baseline_extra is not None and extra_text:
-        tw.append(fitz.Point(extra_x, baseline_extra), extra_text,
-                  font=pinyon_font, fontsize=fontsize)
+        _tw_append(tw, extra_x, baseline_extra, extra_text)
     tw.write_text(page)
 
     pdf_bytes = doc.tobytes()
