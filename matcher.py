@@ -242,7 +242,7 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
 
     for level_rows in by_level.values():
         # 평균 내림차순 → LC 내림차순으로 최고 학생 선정
-        best = max(level_rows, key=lambda r: (r["average"], r["lc"]))
+        best = max(level_rows, key=lambda r: (r["average"] + r["lc"], r["lc"]))
         for row in level_rows:
             s = _make_student(row)
             if row["class"] == best["class"]:
