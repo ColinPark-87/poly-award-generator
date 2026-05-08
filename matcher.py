@@ -208,23 +208,35 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
     """
     정발 캠퍼스 수상자 선정.
 
-    로직:
-    1) Class Ranking "1/N" 학생 = 반 1등 목록 수집
+    로직 (LC도 하나의 과목으로 동등 취급, 동점은 공동 수상):
+    1) 반별로 Total + LC 합산 점수가 가장 높은 학생 = 반 1등.
+       동점이면 모두 반 1등 (공동).
+       (Excel Class Ranking 열은 LC 미반영이라 사용하지 않음)
     2) 반 1등을 level(Col 2)별로 그룹화
-    3) 레벨 내 반 1등 중 평균 최고(동점 시 LC 높은 순) → Achievement Certificate
+    3) 레벨 내 반 1등 중 Total+LC 최고 점수와 같은 학생 → Achievement Certificate (공동 가능)
        나머지 반 1등 → Monthly Test Winner
-    (Note: Excel Level Ranking 열은 전체 캠퍼스 통합 순위라 사용하지 않음)
+    (Note: Excel Level Ranking 열도 전체 캠퍼스 통합 순위라 사용하지 않음)
     """
-    # ── Step 1: 반 1등 수집 ──────────────────────────────
-    class_1st: dict[str, dict] = {}   # class → row
+    from collections import defaultdict
+
+    def _score(r: dict) -> int:
+        return r["total"] + r["lc"]
+
+    # ── Step 1: 반별 1등을 Total+LC 기준으로 직접 산출 (동점 모두 포함) ──
+    by_class: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
-        if str(row["class_ranking"]).startswith("1/"):
-            class_1st[row["class"]] = row
+        by_class[row["class"]].append(row)
+
+    class_winners: list[dict] = []
+    for members in by_class.values():
+        if not members:
+            continue
+        top = max(_score(r) for r in members)
+        class_winners.extend(r for r in members if _score(r) == top)
 
     # ── Step 2: 레벨별 그룹화 ────────────────────────────
-    from collections import defaultdict
     by_level: dict[str, list[dict]] = defaultdict(list)
-    for row in class_1st.values():
+    for row in class_winners:
         by_level[row["level"]].append(row)
 
     # ── Step 3: 레벨 내 최고 학생 → Achievement, 나머지 → Monthly ──
@@ -246,11 +258,10 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
         }
 
     for level_rows in by_level.values():
-        # 평균 내림차순 → LC 내림차순으로 최고 학생 선정
-        best = max(level_rows, key=lambda r: (r["total"] + r["lc"], r["lc"]))
+        top = max(_score(r) for r in level_rows)
         for row in level_rows:
             s = _make_student(row)
-            if row["class"] == best["class"]:
+            if _score(row) == top:
                 achievement.append(s)
             else:
                 monthly_winner.append(s)
