@@ -191,56 +191,45 @@ _award_labels = _campus_cfg.get("award_labels", {
 })
 
 if campus == _JUNGBAL_CAMPUS:
-    # 정발: 과목별 가중 합산으로 반 1등 → Achievement / 나머지 반 1등 → Monthly Test Winner
+    # 정발: 설정된 가중치를 텍스트로 표시 (변경은 campus_config.json에서)
     _saved_w = _campus_cfg.get("score_weights", JUNGBAL_DEFAULT_WEIGHTS)
-    _w_default = {k: float(_saved_w.get(k, JUNGBAL_DEFAULT_WEIGHTS[k]))
-                  for k in JUNGBAL_DEFAULT_WEIGHTS}
+    jungbal_weights = {k: float(_saved_w.get(k, JUNGBAL_DEFAULT_WEIGHTS[k]))
+                       for k in JUNGBAL_DEFAULT_WEIGHTS}
 
-    _w_summary = "  |  ".join(
-        f"{lbl} ×{_w_default[k]:g}"
-        for k, lbl in [
-            ("english",     "English"),
-            ("speech",      "Speech"),
-            ("foundations", "Foundations"),
-            ("lc",          "LC"),
-            ("nf",          "NF"),
-        ]
-    )
+    _SUBJECT_LABEL = {
+        "english":     "English",
+        "speech":      "Speech",
+        "foundations": "Foundations",
+        "lc":          "LC",
+        "nf":          "NF",
+    }
+
+    def _term(key: str, w: float) -> str:
+        if w == 1:
+            return _SUBJECT_LABEL[key]
+        return f"{_SUBJECT_LABEL[key]}×{w:g}"
+
+    # English+Speech+Foundations 모두 1이면 "Total"로 축약
+    _eng_keys = ("english", "speech", "foundations")
+    _all_eng_one = all(jungbal_weights[k] == 1 for k in _eng_keys)
+
+    _parts: list[str] = []
+    if _all_eng_one:
+        _parts.append("Total")
+    else:
+        for k in _eng_keys:
+            if jungbal_weights[k] != 0:
+                _parts.append(_term(k, jungbal_weights[k]))
+    for k in ("lc", "nf"):
+        if jungbal_weights[k] != 0:
+            _parts.append(_term(k, jungbal_weights[k]))
+
+    _formula = " + ".join(_parts) if _parts else "0"
+
     poly_section(
         f"02 · {campus} 수상 기준",
-        f"반 1등(가중 합산) → Achievement Certificate  |  나머지 반 1등 → Monthly Test Winner  ·  {_w_summary}",
+        f"{_formula} 점수 합계 → 반 1등 → Achievement Certificate  |  나머지 반 1등 → Monthly Test Winner  (동점 공동 수상)",
     )
-
-    with st.expander("⚙️ 수상 기준 수정 (과목별 가중치)", expanded=False):
-        st.caption(
-            "각 과목 점수 × 가중치를 합산해 반 1등을 산정합니다. "
-            "가중치 0은 해당 과목 제외, 동점이면 공동 수상. "
-            "엑셀 점수는 변경되지 않습니다."
-        )
-        wc1, wc2, wc3, wc4, wc5 = st.columns(5)
-        w_eng  = wc1.number_input("English",     0.0, 5.0,
-                                   value=_w_default["english"],
-                                   step=0.1, key=f"w_eng_{campus}")
-        w_sp   = wc2.number_input("Speech",      0.0, 5.0,
-                                   value=_w_default["speech"],
-                                   step=0.1, key=f"w_sp_{campus}")
-        w_fnd  = wc3.number_input("Foundations", 0.0, 5.0,
-                                   value=_w_default["foundations"],
-                                   step=0.1, key=f"w_fnd_{campus}")
-        w_lc   = wc4.number_input("Lang. Comp.", 0.0, 5.0,
-                                   value=_w_default["lc"],
-                                   step=0.1, key=f"w_lc_{campus}")
-        w_nf   = wc5.number_input("NF Studies",  0.0, 5.0,
-                                   value=_w_default["nf"],
-                                   step=0.1, key=f"w_nf_{campus}")
-
-    jungbal_weights = {
-        "english":     float(w_eng),
-        "speech":      float(w_sp),
-        "foundations": float(w_fnd),
-        "lc":          float(w_lc),
-        "nf":          float(w_nf),
-    }
 
     # 정발은 PS/HR/BW 기준 없음 — 기본값만 설정
     ps_min    = _campus_cfg["perfect_score_min"]
