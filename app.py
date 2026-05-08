@@ -542,4 +542,98 @@ if "result" in st.session_state:
                     )
                 break
 
+# ══════════════════════════════════════════════════════════
+# 수동 상장 생성
+# ══════════════════════════════════════════════════════════
+_AWARD_LABEL_MAP = {
+    "perfect_score":           f"🏆 {_award_labels.get('perfect_score', 'Perfect Score')}",
+    "honor_roll":              f"🎖 {_award_labels.get('honor_roll',    'Honor Roll')}",
+    "best_writer":             f"✍️ {_award_labels.get('best_writer',   'Best Writer')}",
+    "best_sr":                 f"⭐ {_award_labels.get('best_sr',       'Best SR')}",
+    "achievement_certificate": f"🏆 {_award_labels.get('achievement_certificate', 'Achievement Certificate')}",
+    "monthly_test_winner":     f"🥇 {_award_labels.get('monthly_test_winner',     'Monthly Test Winner')}",
+    "level_test_winner":       f"🎖 {_award_labels.get('level_test_winner',       'Level Test Winner')}",
+}
+
+poly_section("05 · 수동 상장 생성", "업로드 없이 학생 정보를 직접 입력해 개별 상장을 생성합니다.")
+
+_manual_award_keys = list(_award_labels.keys())
+
+mc1, mc2, mc3 = st.columns(3, gap="medium")
+with mc1:
+    _manual_award = st.selectbox(
+        "상장 종류",
+        options=_manual_award_keys,
+        format_func=lambda k: _award_labels.get(k, k),
+        key=f"manual_award_{campus}",
+    )
+with mc2:
+    _manual_name = st.text_input("학생 영문 이름", placeholder="Elena Choi", key="manual_name")
+with mc3:
+    _manual_class = st.text_input("반 이름", placeholder="GT3", key="manual_class")
+
+mm_col, my_col = st.columns(2)
+_MONTHS_LIST = ["January","February","March","April","May","June",
+                "July","August","September","October","November","December"]
+_manual_month_name = mm_col.selectbox("월", _MONTHS_LIST,
+                                       index=datetime.date.today().month - 1,
+                                       key="manual_month")
+_manual_year = my_col.number_input("연도", 2020, 2100,
+                                    datetime.date.today().year, key="manual_year")
+_manual_month_str = f"{_manual_month_name} {int(_manual_year)}"
+
+# 정발 monthly/level winner는 extra_text = 반 이름 자동 사용
+_manual_extra = (
+    _manual_class
+    if campus == _JUNGBAL_CAMPUS and _manual_award in {"monthly_test_winner", "level_test_winner"}
+    else None
+)
+
+_can_manual = bool(_manual_name.strip() and _manual_class.strip())
+st.markdown('<div class="poly-cta-wrap">', unsafe_allow_html=True)
+_btn_manual = st.button("상장 생성", key="btn_manual", disabled=not _can_manual)
+st.markdown('</div>', unsafe_allow_html=True)
+
+if _btn_manual:
+    try:
+        with tempfile.TemporaryDirectory() as _tmpdir:
+            _safe = _manual_name.strip().replace(" ", "_")
+            _fn   = f"{_safe}_{_manual_class.strip().replace(' ','_')}.pdf"
+            _out  = os.path.join(_tmpdir, _fn)
+            build_certificate(
+                award_type        = _manual_award,
+                english_name      = _manual_name.strip(),
+                student_class     = _manual_class.strip(),
+                month             = _manual_month_str,
+                output_path       = _out,
+                template_override = cfg.get_template_path(campus, _manual_award),
+                extra_text        = _manual_extra,
+            )
+            with open(_out, "rb") as _f:
+                _manual_pdf = _f.read()
+        st.session_state["manual_result"] = {
+            "pdf": _manual_pdf, "filename": _fn,
+            "award": _manual_award, "name": _manual_name.strip(),
+            "class": _manual_class.strip(),
+        }
+    except Exception as _e:
+        st.error(f"상장 생성 실패: {_e}")
+
+if "manual_result" in st.session_state:
+    _mr = st.session_state["manual_result"]
+    _prev_col, _info_col = st.columns([2, 1])
+    with _prev_col:
+        st.image(pdf_to_preview_png(_mr["pdf"]), use_container_width=True)
+    with _info_col:
+        st.markdown(f"**{_AWARD_LABEL_MAP.get(_mr['award'], _mr['award'])}**")
+        st.markdown(f"### {_mr['name']}")
+        st.caption(_mr["class"])
+        st.download_button(
+            label="PDF 다운로드",
+            data=_mr["pdf"],
+            file_name=_mr["filename"],
+            mime="application/pdf",
+            key="dl_manual",
+        )
+
 poly_footer("Poly Academy · 상장 생성기", f"v1.0 · {_dt.date.today().year}")
