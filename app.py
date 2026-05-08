@@ -187,30 +187,38 @@ _award_labels = _campus_cfg.get("award_labels", {
     "best_sr":       "Best SR",
 })
 
-poly_section("02 · 수상 기준",
-             f"PS ≥ {_campus_cfg['perfect_score_min']:.0f}%  |  "
-             f"HR ≥ {_campus_cfg['honor_roll_min']:.0f}%  |  "
-             f"BW LC ≥ GT {_bw_def.get('GT',27)} / MGT {_bw_def.get('MGT',27)} / "
-             f"S {_bw_def.get('S',27)} / MAG {_bw_def.get('MAG',27)}")
+if campus == _JUNGBAL_CAMPUS:
+    poly_section(f"02 · {campus} 수상 기준",
+                 "반 1등(Class Ranking 1위) 중 레벨 최고 평균 → Achievement Certificate  |  나머지 반 1등 → Monthly Test Winner")
+    # 정발은 PS/HR/BW 기준 없음 — 기본값만 설정
+    ps_min    = _campus_cfg["perfect_score_min"]
+    hr_min    = _campus_cfg["honor_roll_min"]
+    bw_min_lc = _bw_def
+else:
+    poly_section(f"02 · {campus} 수상 기준",
+                 f"PS ≥ {_campus_cfg['perfect_score_min']:.0f}%  |  "
+                 f"HR ≥ {_campus_cfg['honor_roll_min']:.0f}%  |  "
+                 f"BW LC ≥ GT {_bw_def.get('GT',27)} / MGT {_bw_def.get('MGT',27)} / "
+                 f"S {_bw_def.get('S',27)} / MAG {_bw_def.get('MAG',27)}")
 
-with st.expander("⚙️ 수상 기준 수정", expanded=False):
-    st.caption("변경하면 해당 점수 기준으로 수상자가 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
-    cr1, cr2 = st.columns(2)
-    # 캠퍼스별로 key를 달리해 캠퍼스 변경 시 값이 초기화되도록 함
-    ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0,
-                               value=float(_campus_cfg["perfect_score_min"]),
-                               step=0.5, key=f"ps_min_{campus}")
-    hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0,
-                               value=float(_campus_cfg["honor_roll_min"]),
-                               step=0.5, key=f"hr_min_{campus}")
+    with st.expander("⚙️ 수상 기준 수정", expanded=False):
+        st.caption("변경하면 해당 점수 기준으로 수상자가 검색됩니다. 엑셀의 점수는 변경되지 않습니다.")
+        cr1, cr2 = st.columns(2)
+        # 캠퍼스별로 key를 달리해 캠퍼스 변경 시 값이 초기화되도록 함
+        ps_min = cr1.number_input("Perfect Score 기준 평균 (%)", 0.0, 100.0,
+                                   value=float(_campus_cfg["perfect_score_min"]),
+                                   step=0.5, key=f"ps_min_{campus}")
+        hr_min = cr2.number_input("Honor Roll 기준 평균 (%)",    0.0, 100.0,
+                                   value=float(_campus_cfg["honor_roll_min"]),
+                                   step=0.5, key=f"hr_min_{campus}")
 
-    st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
-    bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
-    bw_gt  = bw_col1.number_input("GT",  0, 30, value=_bw_def.get("GT",  27), step=1, key=f"bw_gt_{campus}")
-    bw_mgt = bw_col2.number_input("MGT", 0, 30, value=_bw_def.get("MGT", 27), step=1, key=f"bw_mgt_{campus}")
-    bw_s   = bw_col3.number_input("S",   0, 30, value=_bw_def.get("S",   27), step=1, key=f"bw_s_{campus}")
-    bw_mag = bw_col4.number_input("MAG", 0, 30, value=_bw_def.get("MAG", 27), step=1, key=f"bw_mag_{campus}")
-    bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
+        st.markdown("**Best Writer 레벨별 최소 LC 점수** (0 = 제한 없음)")
+        bw_col1, bw_col2, bw_col3, bw_col4 = st.columns(4)
+        bw_gt  = bw_col1.number_input("GT",  0, 30, value=_bw_def.get("GT",  27), step=1, key=f"bw_gt_{campus}")
+        bw_mgt = bw_col2.number_input("MGT", 0, 30, value=_bw_def.get("MGT", 27), step=1, key=f"bw_mgt_{campus}")
+        bw_s   = bw_col3.number_input("S",   0, 30, value=_bw_def.get("S",   27), step=1, key=f"bw_s_{campus}")
+        bw_mag = bw_col4.number_input("MAG", 0, 30, value=_bw_def.get("MAG", 27), step=1, key=f"bw_mag_{campus}")
+        bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
 can_generate = bool(((uploaded_ele or uploaded_lx) and month) or uploaded_sr)
 st.markdown('<div class="poly-cta-wrap">', unsafe_allow_html=True)

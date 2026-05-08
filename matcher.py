@@ -203,17 +203,33 @@ def select_winners(
 def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
     """
     정발 캠퍼스 수상자 선정.
-    - achievement_certificate : Level Ranking = "1/N" (레벨 전체 1등)
-    - monthly_test_winner     : Class Ranking = "1/N" + Level Ranking != "1/" (반 1등, 전체 1등 제외)
-    - level_test_winner       : (향후 별도 레벨테스트 데이터 사용 예정, 현재 미사용)
-    """
-    achievement = []
-    monthly_winner = []
-    level_1st_classes: set[str] = set()
 
+    로직:
+    1) Class Ranking "1/N" 학생 = 반 1등 목록 수집
+    2) 반 1등을 level(Col 2)별로 그룹화
+    3) 레벨 내 반 1등 중 평균 최고(동점 시 LC 높은 순) → Achievement Certificate
+       나머지 반 1등 → Monthly Test Winner
+    (Note: Excel Level Ranking 열은 전체 캠퍼스 통합 순위라 사용하지 않음)
+    """
+    # ── Step 1: 반 1등 수집 ──────────────────────────────
+    class_1st: dict[str, dict] = {}   # class → row
     for row in rows:
+        if str(row["class_ranking"]).startswith("1/"):
+            class_1st[row["class"]] = row
+
+    # ── Step 2: 레벨별 그룹화 ────────────────────────────
+    from collections import defaultdict
+    by_level: dict[str, list[dict]] = defaultdict(list)
+    for row in class_1st.values():
+        by_level[row["level"]].append(row)
+
+    # ── Step 3: 레벨 내 최고 학생 → Achievement, 나머지 → Monthly ──
+    achievement: list[dict] = []
+    monthly_winner: list[dict] = []
+
+    def _make_student(row: dict) -> dict:
         korean, english = parse_student_name(row["name"])
-        student = {
+        return {
             "korean_name":   korean,
             "english_name":  english,
             "class":         row["class"],
@@ -223,25 +239,16 @@ def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
             "class_ranking": row["class_ranking"],
             "level_ranking": row["level_ranking"],
         }
-        if str(row["level_ranking"]).startswith("1/"):
-            achievement.append(student)
-            level_1st_classes.add(row["class"])
 
-    for row in rows:
-        if row["class"] in level_1st_classes:
-            continue
-        if str(row["class_ranking"]).startswith("1/"):
-            korean, english = parse_student_name(row["name"])
-            monthly_winner.append({
-                "korean_name":   korean,
-                "english_name":  english,
-                "class":         row["class"],
-                "level":         row["level"],
-                "average":       row["average"],
-                "lc":            row["lc"],
-                "class_ranking": row["class_ranking"],
-                "level_ranking": row["level_ranking"],
-            })
+    for level_rows in by_level.values():
+        # 평균 내림차순 → LC 내림차순으로 최고 학생 선정
+        best = max(level_rows, key=lambda r: (r["average"], r["lc"]))
+        for row in level_rows:
+            s = _make_student(row)
+            if row["class"] == best["class"]:
+                achievement.append(s)
+            else:
+                monthly_winner.append(s)
 
     return {
         "achievement_certificate": achievement,
