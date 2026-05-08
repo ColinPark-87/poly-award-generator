@@ -121,7 +121,7 @@ DATE_LINE_GAP  = 5             # 텍스트 하단 ~ Date 밑줄 간격 (px)
 DATE_CENTER_X  = 706           # Date 밑줄 중심 X (2340px 기준)
 DATE_FONT_SIZE = 52
 DATE_COLOR     = (0, 0, 0)
-DATE_FONT      = "Montserrat-Bold.ttf"
+DATE_FONT      = "PlayfairDisplay-Regular.ttf"
 
 # 자동 감지 실패 시 폴백
 DATE_LINE_Y_FALLBACK = 1295
