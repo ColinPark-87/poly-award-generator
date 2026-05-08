@@ -8,10 +8,13 @@ MONTHS = [
     "July", "August", "September", "October", "November", "December"
 ]
 
-COL_CLASS   = 1
-COL_NAME    = 4
-COL_LC      = 9   # Lang. Composition
-COL_AVERAGE = 12
+COL_CLASS         = 1
+COL_LEVEL         = 2
+COL_NAME          = 4
+COL_LC            = 9   # Lang. Composition
+COL_AVERAGE       = 12
+COL_CLASS_RANKING = 13
+COL_LEVEL_RANKING = 14
 
 
 def clean_class_name(cls: str) -> str:
@@ -50,10 +53,13 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     ws = wb.active
     rows = []
     for row in ws.iter_rows(min_row=3, values_only=True):
-        name_raw = row[COL_NAME]
-        lc_raw   = row[COL_LC]
-        avg_raw  = row[COL_AVERAGE]
-        cls_raw  = row[COL_CLASS]
+        name_raw  = row[COL_NAME]
+        lc_raw    = row[COL_LC]
+        avg_raw   = row[COL_AVERAGE]
+        cls_raw   = row[COL_CLASS]
+        level_raw = row[COL_LEVEL] if len(row) > COL_LEVEL else None
+        cls_rank  = row[COL_CLASS_RANKING] if len(row) > COL_CLASS_RANKING else None
+        lvl_rank  = row[COL_LEVEL_RANKING] if len(row) > COL_LEVEL_RANKING else None
         if not name_raw or avg_raw is None:
             continue
         try:
@@ -62,10 +68,13 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
         except (TypeError, ValueError):
             continue
         rows.append({
-            "class":   clean_class_name(str(cls_raw).strip()) if cls_raw else "",
-            "name":    str(name_raw).strip(),
-            "lc":      lc,
-            "average": avg,
+            "class":         clean_class_name(str(cls_raw).strip()) if cls_raw else "",
+            "level":         str(level_raw).strip() if level_raw else "",
+            "name":          str(name_raw).strip(),
+            "lc":            lc,
+            "average":       avg,
+            "class_ranking": str(cls_rank).strip() if cls_rank else "",
+            "level_ranking": str(lvl_rank).strip() if lvl_rank else "",
         })
     return rows
 
@@ -188,4 +197,53 @@ def select_winners(
         "perfect_score": perfect_score,
         "honor_roll":    honor_roll,
         "best_writer":   list(best_writer_map.values()),
+    }
+
+
+def select_jungbal_winners(rows: list[dict[str, Any]]) -> dict[str, list[dict]]:
+    """
+    정발 캠퍼스 수상자 선정.
+    - achievement_certificate : Level Ranking = "1/N" (레벨 전체 1등)
+    - monthly_test_winner     : Class Ranking = "1/N" + Level Ranking != "1/" (반 1등, 전체 1등 제외)
+    - level_test_winner       : (향후 별도 레벨테스트 데이터 사용 예정, 현재 미사용)
+    """
+    achievement = []
+    monthly_winner = []
+    level_1st_classes: set[str] = set()
+
+    for row in rows:
+        korean, english = parse_student_name(row["name"])
+        student = {
+            "korean_name":   korean,
+            "english_name":  english,
+            "class":         row["class"],
+            "level":         row["level"],
+            "average":       row["average"],
+            "lc":            row["lc"],
+            "class_ranking": row["class_ranking"],
+            "level_ranking": row["level_ranking"],
+        }
+        if str(row["level_ranking"]).startswith("1/"):
+            achievement.append(student)
+            level_1st_classes.add(row["class"])
+
+    for row in rows:
+        if row["class"] in level_1st_classes:
+            continue
+        if str(row["class_ranking"]).startswith("1/"):
+            korean, english = parse_student_name(row["name"])
+            monthly_winner.append({
+                "korean_name":   korean,
+                "english_name":  english,
+                "class":         row["class"],
+                "level":         row["level"],
+                "average":       row["average"],
+                "lc":            row["lc"],
+                "class_ranking": row["class_ranking"],
+                "level_ranking": row["level_ranking"],
+            })
+
+    return {
+        "achievement_certificate": achievement,
+        "monthly_test_winner":     monthly_winner,
     }

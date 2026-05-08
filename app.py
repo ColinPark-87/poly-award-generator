@@ -7,7 +7,8 @@ import requests
 import pandas as pd
 import streamlit as st
 from matcher import (load_rows_from_excel, extract_month_from_filename,
-                     select_winners, load_sr_from_csv, select_sr_winners)
+                     select_winners, load_sr_from_csv, select_sr_winners,
+                     select_jungbal_winners)
 from generator import build_certificate, pdf_to_preview_png
 import config as cfg
 
@@ -53,8 +54,10 @@ poly_header(
 )
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
+_JUNGBAL_CAMPUS = "정발"   # 정발 전용 로직을 적용할 캠퍼스 이름
+
 if "campus_list" not in st.session_state:
-    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷"]
+    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "정발"]
 
 _c1, _c2, _c3 = st.columns([1, 1, 2])
 campus = _c1.selectbox("캠퍼스 선택", st.session_state["campus_list"], index=0, key="campus")
@@ -195,53 +198,86 @@ if _btn_generate:
 
     generated = []   # (award_type, folder, filename, pdf_bytes, student)
     errors    = []
+    is_jungbal_campus = (campus == _JUNGBAL_CAMPUS)
 
     # ── Monthly Test 처리 ──────────────────────────────
     ps = hr = bw = []
+    jb_ach = jb_mw = []   # 정발 전용
     if uploaded_monthly and month:
         with st.spinner("Monthly Test 수상자 선정 중..."):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 tmp.write(uploaded_monthly.read())
                 tmp_path = tmp.name
-            rows    = load_rows_from_excel(tmp_path)
-            winners = select_winners(
-                rows,
-                perfect_score_min=float(ps_min),
-                honor_roll_min=float(hr_min),
-                best_writer_min_lc=bw_min_lc,
-            )
-            os.unlink(tmp_path)
+            rows = load_rows_from_excel(tmp_path)
 
-        ps = sorted(winners["perfect_score"], key=_sort_key)
-        hr = sorted(winners["honor_roll"],    key=_sort_key)
-        bw = sorted(winners["best_writer"],   key=_sort_key)
+            if is_jungbal_campus:
+                jb_winners = select_jungbal_winners(rows)
+                jb_ach = sorted(jb_winners["achievement_certificate"], key=_sort_key)
+                jb_mw  = sorted(jb_winners["monthly_test_winner"],     key=_sort_key)
+            else:
+                winners = select_winners(
+                    rows,
+                    perfect_score_min=float(ps_min),
+                    honor_roll_min=float(hr_min),
+                    best_writer_min_lc=bw_min_lc,
+                )
+                ps = sorted(winners["perfect_score"], key=_sort_key)
+                hr = sorted(winners["honor_roll"],    key=_sort_key)
+                bw = sorted(winners["best_writer"],   key=_sort_key)
+            os.unlink(tmp_path)
 
         with st.spinner("Monthly Test 상장 PDF 생성 중..."):
             with tempfile.TemporaryDirectory() as tmpdir:
-                for award_type, folder, student_list in [
-                    ("perfect_score", "Perfect_Score", ps),
-                    ("honor_roll",    "Honor_Roll",    hr),
-                    ("best_writer",   "Best_Writer",   bw),
-                ]:
-                    for s in student_list:
-                        safe_name  = s["english_name"].replace(" ", "_")
-                        safe_class = s["class"].replace(" ", "_").replace("/", "-")
-                        filename   = f"{safe_name}_{safe_class}.pdf"
-                        out_path   = os.path.join(tmpdir, filename)
-                        try:
-                            build_certificate(
-                                award_type=award_type,
-                                english_name=s["english_name"],
-                                student_class=s["class"],
-                                month=month,
-                                output_path=out_path,
-                                template_override=cfg.get_template_path(campus, award_type),
-                            )
-                            with open(out_path, "rb") as f:
-                                pdf_bytes = f.read()
-                            generated.append((award_type, folder, filename, pdf_bytes, s))
-                        except Exception as e:
-                            errors.append(f"{s['english_name']}: {e}")
+                if is_jungbal_campus:
+                    for award_type, folder, student_list, needs_extra in [
+                        ("achievement_certificate", "Achievement_Certificate", jb_ach, False),
+                        ("monthly_test_winner",     "Monthly_Test_Winner",     jb_mw,  True),
+                    ]:
+                        for s in student_list:
+                            safe_name  = s["english_name"].replace(" ", "_")
+                            safe_class = s["class"].replace(" ", "_").replace("/", "-")
+                            filename   = f"{safe_name}_{safe_class}.pdf"
+                            out_path   = os.path.join(tmpdir, filename)
+                            try:
+                                build_certificate(
+                                    award_type=award_type,
+                                    english_name=s["english_name"],
+                                    student_class=s["class"],
+                                    month=month,
+                                    output_path=out_path,
+                                    template_override=cfg.get_template_path(campus, award_type),
+                                    extra_text=s["class"] if needs_extra else None,
+                                )
+                                with open(out_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                generated.append((award_type, folder, filename, pdf_bytes, s))
+                            except Exception as e:
+                                errors.append(f"{s['english_name']}: {e}")
+                else:
+                    for award_type, folder, student_list in [
+                        ("perfect_score", "Perfect_Score", ps),
+                        ("honor_roll",    "Honor_Roll",    hr),
+                        ("best_writer",   "Best_Writer",   bw),
+                    ]:
+                        for s in student_list:
+                            safe_name  = s["english_name"].replace(" ", "_")
+                            safe_class = s["class"].replace(" ", "_").replace("/", "-")
+                            filename   = f"{safe_name}_{safe_class}.pdf"
+                            out_path   = os.path.join(tmpdir, filename)
+                            try:
+                                build_certificate(
+                                    award_type=award_type,
+                                    english_name=s["english_name"],
+                                    student_class=s["class"],
+                                    month=month,
+                                    output_path=out_path,
+                                    template_override=cfg.get_template_path(campus, award_type),
+                                )
+                                with open(out_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                generated.append((award_type, folder, filename, pdf_bytes, s))
+                            except Exception as e:
+                                errors.append(f"{s['english_name']}: {e}")
 
     # ── Best SR 처리 ───────────────────────────────────
     sr_list = []
@@ -284,9 +320,11 @@ if _btn_generate:
 
     st.session_state["result"] = {
         "ps": ps, "hr": hr, "bw": bw, "sr": sr_list,
+        "jb_ach": jb_ach, "jb_mw": jb_mw,
         "generated": generated,
         "errors": errors,
         "month": month,
+        "is_jungbal": is_jungbal_campus,
         "zip_bytes": zip_buffer.getvalue(),
         "zip_name": f"{(month or 'SR').replace(' ', '_')}_상장.zip",
     }
@@ -297,75 +335,109 @@ if _btn_generate:
 if "result" in st.session_state:
     r         = st.session_state["result"]
     ps        = r["ps"];  hr = r["hr"];  bw = r["bw"];  sr = r["sr"]
+    jb_ach    = r.get("jb_ach", []);  jb_mw = r.get("jb_mw", [])
     generated = r["generated"]
+    _is_jb    = r.get("is_jungbal", False)
 
     if r["errors"]:
         st.warning("일부 상장 생성 실패:\n" + "\n".join(r["errors"]))
 
     st.success(f"총 {len(generated)}개 상장 생성 완료!")
 
-    # ── 수상자 명단 4컬럼 병렬 ────────────────────────────
     poly_section("03 · 수상자 명단", "학생 이름을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
-    col1, col2, col3, col4 = st.columns(4, gap="small")
 
     ev_ps = ev_hr = ev_bw = ev_sr = None
+    ev_jb_ach = ev_jb_mw = None
 
-    with col1:
-        st.markdown(
-            f'<div class="poly-card-head"><span class="ttl">🏆 {_award_labels["perfect_score"]}</span>'
-            f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
-        if ps:
-            ev_ps = st.dataframe(
-                pd.DataFrame([{"이름": s["english_name"], "반": s["class"]} for s in ps]),
-                hide_index=True, use_container_width=True,
-                selection_mode="single-row", on_select="rerun", key="sel_ps",
-            )
-        elif not ps:
-            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(
-            f'<div class="poly-card-head"><span class="ttl">🎖 {_award_labels["honor_roll"]}</span>'
-            f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
-        if hr:
-            ev_hr = st.dataframe(
-                pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
-                hide_index=True, use_container_width=True,
-                selection_mode="single-row", on_select="rerun", key="sel_hr",
-            )
-        elif not hr:
-            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-
-    with col3:
-        st.markdown(
-            f'<div class="poly-card-head"><span class="ttl">✍️ {_award_labels["best_writer"]}</span>'
-            f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
-        if bw:
-            ev_bw = st.dataframe(
-                pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
-                hide_index=True, use_container_width=True,
-                selection_mode="single-row", on_select="rerun", key="sel_bw",
-            )
-        elif not bw:
-            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-
-    with col4:
-        st.markdown(
-            f'<div class="poly-card-head"><span class="ttl">⭐ {_award_labels["best_sr"]}</span>'
-            f'<span class="cnt">{len(sr)}</span></div>', unsafe_allow_html=True)
-        if sr:
-            ev_sr = st.dataframe(
-                pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "GE": s["ge"]} for s in sr]),
-                hide_index=True, use_container_width=True,
-                selection_mode="single-row", on_select="rerun", key="sel_sr",
-            )
-        elif not sr:
-            st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+    if _is_jb:
+        # ── 정발 수상자 명단 (2컬럼) ─────────────────────
+        col1, col2 = st.columns(2, gap="small")
+        with col1:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🏆 Achievement Certificate</span>'
+                f'<span class="cnt">{len(jb_ach)}</span></div>', unsafe_allow_html=True)
+            if jb_ach:
+                ev_jb_ach = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "레벨랭킹": s["level_ranking"]} for s in jb_ach]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_jb_ach",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🥇 Monthly Test Winner</span>'
+                f'<span class="cnt">{len(jb_mw)}</span></div>', unsafe_allow_html=True)
+            if jb_mw:
+                ev_jb_mw = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "반랭킹": s["class_ranking"]} for s in jb_mw]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_jb_mw",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+    else:
+        # ── 기존 캠퍼스 수상자 명단 (4컬럼) ──────────────
+        col1, col2, col3, col4 = st.columns(4, gap="small")
+        with col1:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🏆 {_award_labels["perfect_score"]}</span>'
+                f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
+            if ps:
+                ev_ps = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"]} for s in ps]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_ps",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🎖 {_award_labels["honor_roll"]}</span>'
+                f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
+            if hr:
+                ev_hr = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_hr",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">✍️ {_award_labels["best_writer"]}</span>'
+                f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
+            if bw:
+                ev_bw = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_bw",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with col4:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">⭐ {_award_labels["best_sr"]}</span>'
+                f'<span class="cnt">{len(sr)}</span></div>', unsafe_allow_html=True)
+            if sr:
+                ev_sr = st.dataframe(
+                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "GE": s["ge"]} for s in sr]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="sel_sr",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
     # ── 클릭된 학생 파악 ──────────────────────────────────
     _sel_student = None
     _sel_award   = None
-    if ev_ps and ev_ps.selection.rows:
+    if ev_jb_ach and ev_jb_ach.selection.rows:
+        _sel_student = jb_ach[ev_jb_ach.selection.rows[0]]
+        _sel_award   = "achievement_certificate"
+    elif ev_jb_mw and ev_jb_mw.selection.rows:
+        _sel_student = jb_mw[ev_jb_mw.selection.rows[0]]
+        _sel_award   = "monthly_test_winner"
+    elif ev_ps and ev_ps.selection.rows:
         _sel_student = ps[ev_ps.selection.rows[0]]
         _sel_award   = "perfect_score"
     elif ev_hr and ev_hr.selection.rows:

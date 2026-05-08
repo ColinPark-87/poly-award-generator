@@ -53,10 +53,14 @@ DPI = 200
 
 # ── 반/레벨 이름: AWARDED TO 바로 아래 (고정 Y) ───────────────
 CLASS_Y = {
-    "perfect_score": 520,
-    "honor_roll":    625,
-    "best_writer":   520,
-    "best_sr":       640,
+    "perfect_score":          520,
+    "honor_roll":             625,
+    "best_writer":            520,
+    "best_sr":                640,
+    # 정발 캠퍼스
+    "achievement_certificate": 680,
+    "monthly_test_winner":     680,
+    "level_test_winner":       680,
 }
 CLASS_FONT_SIZE = 52
 CLASS_COLOR     = (13, 27, 62)
@@ -67,10 +71,14 @@ CLASS_FONT      = "Montserrat-Bold.ttf"
 # → 대소문자 조합, 이름 길이 상관없이 항상 선 바로 위에 위치
 NAME_LINE_GAP  = 5             # 텍스트 하단 ~ 구분선 간격 (px)
 NAME_FONT_SIZE = {             # award_type별 최대 폰트 크기
-    "perfect_score": 160,
-    "honor_roll":    110,      # 2줄 타이틀로 공간 좁음
-    "best_writer":   160,
-    "best_sr":       150,
+    "perfect_score":           160,
+    "honor_roll":              110,      # 2줄 타이틀로 공간 좁음
+    "best_writer":             160,
+    "best_sr":                 150,
+    # 정발 캠퍼스
+    "achievement_certificate": 140,
+    "monthly_test_winner":     140,
+    "level_test_winner":       140,
 }
 NAME_FONT_SIZE_MIN = 70
 NAME_MAX_WIDTH     = 1600
@@ -79,11 +87,30 @@ NAME_FONT          = "DancingScript-Bold.ttf"
 
 # 자동 감지 실패 시 폴백 값
 DIVIDER_LINE_Y_FALLBACK = {
-    "perfect_score": 870,
-    "honor_roll":    870,
-    "best_writer":   870,
-    "best_sr":       870,
+    "perfect_score":           870,
+    "honor_roll":              870,
+    "best_writer":             870,
+    "best_sr":                 870,
+    # 정발 캠퍼스 (실제 선 y=904)
+    "achievement_certificate": 904,
+    "monthly_test_winner":     904,
+    "level_test_winner":       904,
 }
+
+# ── 정발 전용: 가상 자리표시자 기반 텍스트 배치 ──────────────
+# _scan_jungbal_placeholders() 가 PDF에서 자동으로 찾으며,
+# 이 상수들은 감지 실패 시 폴백으로만 사용됨
+JUNGBAL_AWARD_TYPES = {
+    "achievement_certificate",
+    "monthly_test_winner",
+    "level_test_winner",
+}
+# 날짜 자리표시자 폴백 bbox (x0,y0,x1,y1 @200dpi)
+JUNGBAL_DATE_BBOX_FALLBACK = (1190, 1087, 1468, 1198)
+# 반/레벨 이름 자리표시자 폴백 bbox (monthly/level winner 전용)
+JUNGBAL_EXTRA_BBOX_FALLBACK = (1439, 959, 1773, 1070)
+# 자리표시자용 폰트 크기 (기존 DATE_FONT_SIZE와 동일)
+JUNGBAL_PLACEHOLDER_FONT_SIZE = 48
 
 # ── Date: Date 밑줄 기준 하단 정렬 ───────────────────────────
 # DATE_Y 대신 generator가 밑줄 위치를 자동 감지 후 bbox 하단 정렬
