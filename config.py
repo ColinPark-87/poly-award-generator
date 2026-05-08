@@ -109,8 +109,10 @@ JUNGBAL_AWARD_TYPES = {
 JUNGBAL_DATE_BBOX_FALLBACK = (1190, 1087, 1468, 1198)
 # 반/레벨 이름 자리표시자 폴백 bbox (monthly/level winner 전용)
 JUNGBAL_EXTRA_BBOX_FALLBACK = (1439, 959, 1773, 1070)
-# 자리표시자용 폰트 크기 (기존 DATE_FONT_SIZE와 동일)
-JUNGBAL_PLACEHOLDER_FONT_SIZE = 48
+# 정발 자리표시자용 폰트: 템플릿 PalaceScriptMT와 유사한 스크립트체
+JUNGBAL_SCRIPT_FONT = "DancingScript-Bold.ttf"
+# 자리표시자용 폰트 크기 — 템플릿 원본 40pt × (200/72) ≈ 111px, 여유를 두고 80
+JUNGBAL_PLACEHOLDER_FONT_SIZE = 80
 
 # ── Date: Date 밑줄 기준 하단 정렬 ───────────────────────────
 # DATE_Y 대신 generator가 밑줄 위치를 자동 감지 후 bbox 하단 정렬

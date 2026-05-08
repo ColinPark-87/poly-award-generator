@@ -132,12 +132,19 @@ def _draw_on_placeholder(
 ) -> None:
     """
     자리표시자(_____) 위에 텍스트를 그린다.
-    1) 흰색 사각형으로 ___ 를 덮음
+    1) 이미지 배경색을 샘플링해 ___ 를 덮음 (하드코딩 흰색 대신)
     2) bbox 안에 맞는 폰트 크기로 텍스트를 왼쪽 정렬, 수직 중앙 정렬
     """
     x0, y0, x1, y1 = bbox
-    # 흰색으로 덮기 (양옆 약간 여유)
-    draw.rectangle([x0 - 4, y0, x1 + 4, y1], fill=(255, 255, 255))
+    # 배경색 샘플링: bbox 중앙 x, bbox 상단 40px 위 지점
+    sample_x = max(0, min(img.width - 1, int((x0 + x1) / 2)))
+    sample_y = max(0, int(y0) - 40)
+    try:
+        px = img.getpixel((sample_x, sample_y))
+        bg_color = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+    except Exception:
+        bg_color = (255, 255, 255)
+    draw.rectangle([x0 - 4, y0, x1 + 4, y1], fill=bg_color)
 
     ph_w = x1 - x0
     ph_h = y1 - y0
@@ -206,11 +213,11 @@ def build_certificate(
         # ── 정발: 자리표시자(_____) 기반으로 날짜 및 반/레벨 이름 삽입 ──
         placeholders = _scan_jungbal_placeholders(template_path, config.DPI)
 
-        # 날짜 (_____  아래쪽)
+        # 날짜 (_____  아래쪽) — 템플릿 PalaceScriptMT에 가까운 DancingScript 사용
         date_bbox = placeholders["date"] or config.JUNGBAL_DATE_BBOX_FALLBACK
         _draw_on_placeholder(
             draw, img, month, date_bbox,
-            config.DATE_FONT, config.DATE_COLOR,
+            config.JUNGBAL_SCRIPT_FONT, config.DATE_COLOR,
             max_font_size=config.JUNGBAL_PLACEHOLDER_FONT_SIZE,
         )
 
@@ -219,7 +226,7 @@ def build_certificate(
             extra_bbox = placeholders["extra"] or config.JUNGBAL_EXTRA_BBOX_FALLBACK
             _draw_on_placeholder(
                 draw, img, extra_text, extra_bbox,
-                config.CLASS_FONT, config.CLASS_COLOR,
+                config.JUNGBAL_SCRIPT_FONT, config.CLASS_COLOR,
                 max_font_size=config.JUNGBAL_PLACEHOLDER_FONT_SIZE,
             )
 
