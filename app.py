@@ -123,8 +123,16 @@ _bw_def     = _campus_cfg["bw_min_lc"]
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
-poly_section("01 · 데이터 업로드", "Monthly Test 결과 엑셀(ELE / LX)과 Best SR CSV를 업로드하세요.")
-up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
+_use_sr = (campus != _JUNGBAL_CAMPUS)   # 정발은 Best SR 미사용
+_hint   = "Monthly Test 결과 엑셀(ELE / LX)을 업로드하세요." if not _use_sr else \
+          "Monthly Test 결과 엑셀(ELE / LX)과 Best SR CSV를 업로드하세요."
+poly_section("01 · 데이터 업로드", _hint)
+
+if _use_sr:
+    up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
+else:
+    up_col1, up_col2 = st.columns(2, gap="medium")
+    up_col3 = None
 
 with up_col1:
     st.markdown('<div class="poly-drop"><b>Monthly Test · ELE</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
@@ -135,7 +143,7 @@ with up_col2:
     uploaded_lx = st.file_uploader("LX 성적 업로드 (.xlsx)", type=["xlsx"], key="lx_upload")
 
 # 월 감지: ELE → LX → 직접 입력 순으로 시도
-uploaded_monthly = uploaded_ele or uploaded_lx   # 하위 호환용 (기존 로직에서 사용)
+uploaded_monthly = uploaded_ele or uploaded_lx   # 하위 호환용
 month = ""
 for _uf in [uploaded_ele, uploaded_lx]:
     if _uf:
@@ -148,22 +156,26 @@ if (uploaded_ele or uploaded_lx) and not month:
 if month:
     st.success(f"감지된 월: **{month}**")
 
-with up_col3:
-    st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
-    uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
-    if uploaded_sr:
-        st.success(f"파일 감지: **{uploaded_sr.name}**")
-    _MONTHS = ["January","February","March","April","May","June",
-               "July","August","September","October","November","December"]
-    import datetime
-    sr_m_col, sr_y_col = st.columns(2)
-    sr_month_name = sr_m_col.selectbox("SR 상장 월", _MONTHS,
-                                        index=datetime.date.today().month - 1,
-                                        key="sr_month")
-    sr_year       = sr_y_col.number_input("연도", 2020, 2100,
-                                           datetime.date.today().year,
-                                           key="sr_year")
-    sr_month = f"{sr_month_name} {int(sr_year)}"
+import datetime
+if _use_sr and up_col3 is not None:
+    with up_col3:
+        st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
+        uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
+        if uploaded_sr:
+            st.success(f"파일 감지: **{uploaded_sr.name}**")
+        _MONTHS = ["January","February","March","April","May","June",
+                   "July","August","September","October","November","December"]
+        sr_m_col, sr_y_col = st.columns(2)
+        sr_month_name = sr_m_col.selectbox("SR 상장 월", _MONTHS,
+                                            index=datetime.date.today().month - 1,
+                                            key="sr_month")
+        sr_year       = sr_y_col.number_input("연도", 2020, 2100,
+                                               datetime.date.today().year,
+                                               key="sr_year")
+        sr_month = f"{sr_month_name} {int(sr_year)}"
+else:
+    uploaded_sr = None
+    sr_month = f"January {datetime.date.today().year}"
 
 # ══════════════════════════════════════════════════════════
 # 수상 기준 설정 + 생성 버튼
