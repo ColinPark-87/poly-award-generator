@@ -166,6 +166,73 @@ def _draw_on_placeholder(
     draw.text((x0, text_y), text, font=font, fill=color)
 
 
+def _inject_jungbal_text_pdf(
+    template_path: str,
+    date_text: str,
+    extra_text: str | None,
+) -> bytes:
+    """
+    정발 템플릿 PDF에 날짜/반이름을 내장 PalaceScriptMT 폰트로 직접 삽입.
+    PalaceScriptMT subset에 없는 숫자 등은 Pinyon Script로 fallback.
+    수정된 PDF를 bytes로 반환.
+    """
+    doc  = fitz.open(template_path)
+    page = doc[0]
+
+    bg_fill    = (231 / 255, 231 / 255, 232 / 255)   # 템플릿 배경색
+    text_color = (13 / 255, 27 / 255, 62 / 255)       # NAME_COLOR
+    fontsize   = 40.0
+
+    # ── 내장 PalaceScriptMT 추출 ──────────────────────────
+    palace_font = None
+    for f in page.get_fonts(full=True):
+        if "PalaceScript" in f[3]:
+            fd = doc.extract_font(f[0])
+            if fd[3]:
+                palace_font = fitz.Font(fontbuffer=fd[3])
+            break
+
+    # ── Pinyon Script (숫자 fallback) ─────────────────────
+    pinyon_path = os.path.join(config.FONT_DIR, "PinyonScript-Regular.ttf")
+    pinyon_font = fitz.Font(fontfile=pinyon_path) if os.path.exists(pinyon_path) else palace_font
+
+    def _tw_append_mixed(tw: fitz.TextWriter, x: float, y: float, text: str) -> None:
+        """PalaceScriptMT + Pinyon Script 글자별 혼합 삽입."""
+        for ch in text:
+            use = palace_font if (palace_font and palace_font.has_glyph(ord(ch))) else pinyon_font
+            if use:
+                tw.append(fitz.Point(x, y), ch, font=use, fontsize=fontsize)
+                x += use.text_length(ch, fontsize=fontsize)
+
+    # ── ___ 패턴 위치 찾기 · 배경 덮기 ───────────────────
+    page_h     = page.rect.height
+    date_hit   = None
+    extra_hit  = None
+
+    for pattern in ["______", "_____", "____", "___"]:
+        for h in page.search_for(pattern):
+            r = fitz.Rect(h.x0 - 2, h.y0 - 1, h.x1 + 2, h.y1 + 1)
+            page.draw_rect(r, color=None, fill=bg_fill)
+            if h.y0 > page_h * 0.65:
+                if date_hit is None:
+                    date_hit = h
+            else:
+                if extra_hit is None:
+                    extra_hit = h
+
+    # ── 텍스트 삽입 ───────────────────────────────────────
+    tw = fitz.TextWriter(page.rect, color=text_color)
+    if date_hit:
+        _tw_append_mixed(tw, date_hit.x0, date_hit.y1 - 3, date_text)
+    if extra_hit and extra_text:
+        _tw_append_mixed(tw, extra_hit.x0, extra_hit.y1 - 3, extra_text)
+    tw.write_text(page)
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+    return pdf_bytes
+
+
 def build_certificate(
     award_type:        str,
     english_name:      str,
@@ -185,11 +252,20 @@ def build_certificate(
     if not template_path or not os.path.exists(template_path):
         raise FileNotFoundError(f"템플릿 없음: {template_path}")
 
-    img  = _pdf_page_to_pil(template_path, 0)
+    is_jungbal = award_type in config.JUNGBAL_AWARD_TYPES
+
+    if is_jungbal:
+        # ── 정발: 내장 PalaceScriptMT로 날짜/반이름 PDF에 직접 삽입 후 래스터라이즈
+        modified_bytes = _inject_jungbal_text_pdf(template_path, month, extra_text)
+        _doc  = fitz.open(stream=modified_bytes, filetype="pdf")
+        _pix  = _doc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
+        img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
+        _doc.close()
+    else:
+        img = _pdf_page_to_pil(template_path, 0)
+
     draw = ImageDraw.Draw(img)
     w    = img.width
-
-    is_jungbal = award_type in config.JUNGBAL_AWARD_TYPES
 
     # ── 반/레벨 이름 (AWARDED TO 아래 고정 Y) ─────────────
     class_font = _load_font(config.CLASS_FONT, config.CLASS_FONT_SIZE)
@@ -209,28 +285,7 @@ def build_certificate(
     name_y    = divider_y - name_bbox[3] - config.NAME_LINE_GAP
     _draw_centered(draw, english_name, name_y, name_font, config.NAME_COLOR, w)
 
-    if is_jungbal:
-        # ── 정발: 자리표시자(_____) 기반으로 날짜 및 반/레벨 이름 삽입 ──
-        placeholders = _scan_jungbal_placeholders(template_path, config.DPI)
-
-        # 날짜 (_____  아래쪽) — 템플릿 PalaceScriptMT에 가까운 DancingScript 사용
-        date_bbox = placeholders["date"] or config.JUNGBAL_DATE_BBOX_FALLBACK
-        _draw_on_placeholder(
-            draw, img, month, date_bbox,
-            config.JUNGBAL_SCRIPT_FONT, config.DATE_COLOR,
-            max_font_size=config.JUNGBAL_PLACEHOLDER_FONT_SIZE,
-        )
-
-        # 반/레벨 이름 (monthly/level winner 전용, 위쪽 _____)
-        if extra_text:
-            extra_bbox = placeholders["extra"] or config.JUNGBAL_EXTRA_BBOX_FALLBACK
-            _draw_on_placeholder(
-                draw, img, extra_text, extra_bbox,
-                config.JUNGBAL_SCRIPT_FONT, config.CLASS_COLOR,
-                max_font_size=config.JUNGBAL_PLACEHOLDER_FONT_SIZE,
-            )
-
-    else:
+    if not is_jungbal:
         # ── 기존 캠퍼스: 선 기반 날짜 배치 ───────────────────
         date_line_y = _find_date_line_y(lines, config.DATE_LINE_Y_FALLBACK)
         date_font   = _load_font(config.DATE_FONT, config.DATE_FONT_SIZE)
