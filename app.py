@@ -378,10 +378,15 @@ if "result" in st.session_state:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
     else:
         # ── 기존 캠퍼스 수상자 명단 (4컬럼) ──────────────
+        # 정발 캠퍼스로 전환 후 이전 결과가 남아있을 때 KeyError 방지용 폴백
+        _lbl_ps = _award_labels.get("perfect_score", "Perfect Score")
+        _lbl_hr = _award_labels.get("honor_roll",    "Honor Roll")
+        _lbl_bw = _award_labels.get("best_writer",   "Best Writer")
+        _lbl_sr = _award_labels.get("best_sr",       "Best SR")
         col1, col2, col3, col4 = st.columns(4, gap="small")
         with col1:
             st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">🏆 {_award_labels["perfect_score"]}</span>'
+                f'<div class="poly-card-head"><span class="ttl">🏆 {_lbl_ps}</span>'
                 f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
             if ps:
                 ev_ps = st.dataframe(
@@ -393,7 +398,7 @@ if "result" in st.session_state:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
         with col2:
             st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">🎖 {_award_labels["honor_roll"]}</span>'
+                f'<div class="poly-card-head"><span class="ttl">🎖 {_lbl_hr}</span>'
                 f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
             if hr:
                 ev_hr = st.dataframe(
@@ -405,7 +410,7 @@ if "result" in st.session_state:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
         with col3:
             st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">✍️ {_award_labels["best_writer"]}</span>'
+                f'<div class="poly-card-head"><span class="ttl">✍️ {_lbl_bw}</span>'
                 f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
             if bw:
                 ev_bw = st.dataframe(
@@ -417,7 +422,7 @@ if "result" in st.session_state:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
         with col4:
             st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">⭐ {_award_labels["best_sr"]}</span>'
+                f'<div class="poly-card-head"><span class="ttl">⭐ {_lbl_sr}</span>'
                 f'<span class="cnt">{len(sr)}</span></div>', unsafe_allow_html=True)
             if sr:
                 ev_sr = st.dataframe(
@@ -464,10 +469,13 @@ if "result" in st.session_state:
     # ── 개별 미리보기 / 다운로드 ──────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     _AWARD_LABEL = {
-        "perfect_score": f"🏆 {_award_labels['perfect_score']}",
-        "honor_roll":    f"🎖 {_award_labels['honor_roll']}",
-        "best_writer":   f"✍️ {_award_labels['best_writer']}",
-        "best_sr":       f"⭐ {_award_labels['best_sr']}",
+        "perfect_score":           f"🏆 {_award_labels.get('perfect_score', 'Perfect Score')}",
+        "honor_roll":              f"🎖 {_award_labels.get('honor_roll',    'Honor Roll')}",
+        "best_writer":             f"✍️ {_award_labels.get('best_writer',   'Best Writer')}",
+        "best_sr":                 f"⭐ {_award_labels.get('best_sr',       'Best SR')}",
+        "achievement_certificate": f"🏆 {_award_labels.get('achievement_certificate', 'Achievement Certificate')}",
+        "monthly_test_winner":     f"🥇 {_award_labels.get('monthly_test_winner',     'Monthly Test Winner')}",
+        "level_test_winner":       f"🎖 {_award_labels.get('level_test_winner',       'Level Test Winner')}",
     }
     if _sel_student is None:
         st.info("위 명단에서 학생을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
