@@ -123,22 +123,32 @@ _bw_def     = _campus_cfg["bw_min_lc"]
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
-poly_section("01 · 데이터 업로드", "Monthly Test 결과 엑셀과 Best SR CSV를 각각 업로드하세요.")
-up_col1, up_col2 = st.columns(2, gap="medium")
+poly_section("01 · 데이터 업로드", "Monthly Test 결과 엑셀(ELE / LX)과 Best SR CSV를 업로드하세요.")
+up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
 
 with up_col1:
-    st.markdown('<div class="poly-drop"><b>Monthly Test</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
-    uploaded_monthly = st.file_uploader("성적 엑셀 업로드 (.xlsx)", type=["xlsx"], key="monthly_upload")
-    if uploaded_monthly:
-        month = extract_month_from_filename(uploaded_monthly.name)
-        if month:
-            st.success(f"감지된 월: **{month}**")
-        else:
-            month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="", key="month_input")
-    else:
-        month = ""
+    st.markdown('<div class="poly-drop"><b>Monthly Test · ELE</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
+    uploaded_ele = st.file_uploader("ELE 성적 업로드 (.xlsx)", type=["xlsx"], key="ele_upload")
 
 with up_col2:
+    st.markdown('<div class="poly-drop"><b>Monthly Test · LX</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
+    uploaded_lx = st.file_uploader("LX 성적 업로드 (.xlsx)", type=["xlsx"], key="lx_upload")
+
+# 월 감지: ELE → LX → 직접 입력 순으로 시도
+uploaded_monthly = uploaded_ele or uploaded_lx   # 하위 호환용 (기존 로직에서 사용)
+month = ""
+for _uf in [uploaded_ele, uploaded_lx]:
+    if _uf:
+        _m = extract_month_from_filename(_uf.name)
+        if _m:
+            month = _m
+            break
+if (uploaded_ele or uploaded_lx) and not month:
+    month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="", key="month_input")
+if month:
+    st.success(f"감지된 월: **{month}**")
+
+with up_col3:
     st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
     uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
     if uploaded_sr:
@@ -190,7 +200,7 @@ with st.expander("⚙️ 수상 기준 수정", expanded=False):
     bw_mag = bw_col4.number_input("MAG", 0, 30, value=_bw_def.get("MAG", 27), step=1, key=f"bw_mag_{campus}")
     bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
-can_generate = bool((uploaded_monthly and month) or uploaded_sr)
+can_generate = bool(((uploaded_ele or uploaded_lx) and month) or uploaded_sr)
 st.markdown('<div class="poly-cta-wrap">', unsafe_allow_html=True)
 _btn_generate = st.button("상장 생성하기", type="primary", disabled=not can_generate)
 st.markdown('</div>', unsafe_allow_html=True)
@@ -203,12 +213,17 @@ if _btn_generate:
     # ── Monthly Test 처리 ──────────────────────────────
     ps = hr = bw = []
     jb_ach = jb_mw = []   # 정발 전용
-    if uploaded_monthly and month:
+    if (uploaded_ele or uploaded_lx) and month:
         with st.spinner("Monthly Test 수상자 선정 중..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                tmp.write(uploaded_monthly.read())
-                tmp_path = tmp.name
-            rows = load_rows_from_excel(tmp_path)
+            rows = []
+            for _uf in [uploaded_ele, uploaded_lx]:
+                if _uf is None:
+                    continue
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                    tmp.write(_uf.read())
+                    tmp_path = tmp.name
+                rows.extend(load_rows_from_excel(tmp_path))
+                os.unlink(tmp_path)
 
             if is_jungbal_campus:
                 jb_winners = select_jungbal_winners(rows)
@@ -224,7 +239,6 @@ if _btn_generate:
                 ps = sorted(winners["perfect_score"], key=_sort_key)
                 hr = sorted(winners["honor_roll"],    key=_sort_key)
                 bw = sorted(winners["best_writer"],   key=_sort_key)
-            os.unlink(tmp_path)
 
         with st.spinner("Monthly Test 상장 PDF 생성 중..."):
             with tempfile.TemporaryDirectory() as tmpdir:
