@@ -172,60 +172,65 @@ def _inject_jungbal_text_pdf(
     extra_text: str | None,
 ) -> bytes:
     """
-    정발 템플릿 PDF에 날짜/반이름을 내장 PalaceScriptMT 폰트로 직접 삽입.
-    PalaceScriptMT subset에 없는 숫자 등은 Pinyon Script로 fallback.
-    수정된 PDF를 bytes로 반환.
+    정발 템플릿 PDF에 날짜/반이름을 Pinyon Script로 직접 삽입.
+    - 색상: 템플릿 텍스트와 동일한 검정(0,0,0)
+    - 크기: 템플릿 텍스트와 동일한 40pt
+    - 기준선: 텍스트 span의 origin y를 직접 사용
     """
     doc  = fitz.open(template_path)
     page = doc[0]
 
-    bg_fill    = (231 / 255, 231 / 255, 232 / 255)   # 템플릿 배경색
-    text_color = (13 / 255, 27 / 255, 62 / 255)       # NAME_COLOR
-    fontsize   = 40.0
+    bg_fill  = (231 / 255, 231 / 255, 232 / 255)  # 템플릿 배경색
+    text_clr = (0.0, 0.0, 0.0)                     # 템플릿과 동일한 검정
+    fontsize = 40.0
 
-    # ── 내장 PalaceScriptMT 추출 ──────────────────────────
-    palace_font = None
-    for f in page.get_fonts(full=True):
-        if "PalaceScript" in f[3]:
-            fd = doc.extract_font(f[0])
-            if fd[3]:
-                palace_font = fitz.Font(fontbuffer=fd[3])
-            break
-
-    # ── Pinyon Script (숫자 fallback) ─────────────────────
+    # ── Pinyon Script 로드 ────────────────────────────────
     pinyon_path = os.path.join(config.FONT_DIR, "PinyonScript-Regular.ttf")
-    pinyon_font = fitz.Font(fontfile=pinyon_path) if os.path.exists(pinyon_path) else palace_font
+    if not os.path.exists(pinyon_path):
+        raise FileNotFoundError(f"PinyonScript 폰트 없음: {pinyon_path}")
+    pinyon_font = fitz.Font(fontfile=pinyon_path)
 
-    def _tw_append_mixed(tw: fitz.TextWriter, x: float, y: float, text: str) -> None:
-        """PalaceScriptMT + Pinyon Script 글자별 혼합 삽입."""
-        for ch in text:
-            use = palace_font if (palace_font and palace_font.has_glyph(ord(ch))) else pinyon_font
-            if use:
-                tw.append(fitz.Point(x, y), ch, font=use, fontsize=fontsize)
-                x += use.text_length(ch, fontsize=fontsize)
+    # ── 텍스트 span에서 ___ 가 포함된 줄의 정확한 기준선 y 추출 ──
+    page_h = page.rect.height
+    baseline_date  = None
+    baseline_extra = None
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] != 0:
+            continue
+        for line in b["lines"]:
+            for span in line["spans"]:
+                if "___" in span["text"]:
+                    oy = span["origin"][1]
+                    if oy > page_h * 0.65:
+                        if baseline_date is None:
+                            baseline_date = oy
+                    else:
+                        if baseline_extra is None:
+                            baseline_extra = oy
 
     # ── ___ 패턴 위치 찾기 · 배경 덮기 ───────────────────
-    page_h     = page.rect.height
-    date_hit   = None
-    extra_hit  = None
+    date_x  = None
+    extra_x = None
 
     for pattern in ["______", "_____", "____", "___"]:
         for h in page.search_for(pattern):
             r = fitz.Rect(h.x0 - 2, h.y0 - 1, h.x1 + 2, h.y1 + 1)
             page.draw_rect(r, color=None, fill=bg_fill)
             if h.y0 > page_h * 0.65:
-                if date_hit is None:
-                    date_hit = h
+                if date_x is None:
+                    date_x = h.x0
             else:
-                if extra_hit is None:
-                    extra_hit = h
+                if extra_x is None:
+                    extra_x = h.x0
 
-    # ── 텍스트 삽입 ───────────────────────────────────────
-    tw = fitz.TextWriter(page.rect, color=text_color)
-    if date_hit:
-        _tw_append_mixed(tw, date_hit.x0, date_hit.y1 - 3, date_text)
-    if extra_hit and extra_text:
-        _tw_append_mixed(tw, extra_hit.x0, extra_hit.y1 - 3, extra_text)
+    # ── 텍스트 삽입 (Pinyon Script, 검정, 정확한 기준선) ──
+    tw = fitz.TextWriter(page.rect, color=text_clr)
+    if date_x is not None and baseline_date is not None:
+        tw.append(fitz.Point(date_x, baseline_date), date_text,
+                  font=pinyon_font, fontsize=fontsize)
+    if extra_x is not None and baseline_extra is not None and extra_text:
+        tw.append(fitz.Point(extra_x, baseline_extra), extra_text,
+                  font=pinyon_font, fontsize=fontsize)
     tw.write_text(page)
 
     pdf_bytes = doc.tobytes()
