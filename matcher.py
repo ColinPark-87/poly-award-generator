@@ -79,29 +79,41 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
 
-    # 헤더(2행)에서 "Lang. Composition" 열 위치 자동 감지
-    # ELE 파일 = col 9, LX 파일 = col 10 (Phonics 열이 앞에 추가됨)
+    # 헤더(2행)에서 열 위치 자동 감지 — MT/LT 파일 구조 차이 대응
+    # MT: TOTAL=col11, AVG=col12, CLASS_RANK=col13, LEVEL_RANK=col14, LC=col9
+    # LT: TOTAL=col19, AVG=col20, CLASS_RANK=col23, LEVEL_RANK=col24, LC=col17
     header = list(next(ws.iter_rows(min_row=2, max_row=2, values_only=True)))
-    col_lc = COL_LC
-    for i, h in enumerate(header):
-        if h and str(h).strip() == "Lang. Composition":
-            col_lc = i
-            break
+
+    def _find_col(name: str, default: int) -> int:
+        for i, h in enumerate(header):
+            if h and str(h).strip() == name:
+                return i
+        return default
+
+    col_lc       = _find_col("Lang. Composition", COL_LC)
+    col_total    = _find_col("TOTAL",         COL_TOTAL)
+    col_avg      = _find_col("Average",       COL_AVERAGE)
+    col_cls_rank = _find_col("Class Ranking", COL_CLASS_RANKING)
+    col_lvl_rank = _find_col("Level Ranking", COL_LEVEL_RANKING)
+    col_english  = _find_col("English",       COL_ENGLISH)
+    col_speech   = _find_col("Speech Building", COL_SPEECH)
+    col_fnd      = _find_col("Eng. Foundations", COL_FOUNDATIONS)
+    col_nf       = _find_col("NF Studies",    COL_NF)
 
     rows = []
     for row in ws.iter_rows(min_row=3, values_only=True):
         name_raw  = row[COL_NAME]
-        lc_raw    = row[col_lc] if len(row) > col_lc else None
-        total_raw = row[COL_TOTAL] if len(row) > COL_TOTAL else None
-        avg_raw   = row[COL_AVERAGE]
+        lc_raw    = row[col_lc]       if len(row) > col_lc       else None
+        total_raw = row[col_total]    if len(row) > col_total    else None
+        avg_raw   = row[col_avg]      if len(row) > col_avg      else None
         cls_raw   = row[COL_CLASS]
-        level_raw = row[COL_LEVEL] if len(row) > COL_LEVEL else None
-        cls_rank  = row[COL_CLASS_RANKING] if len(row) > COL_CLASS_RANKING else None
-        lvl_rank  = row[COL_LEVEL_RANKING] if len(row) > COL_LEVEL_RANKING else None
-        eng_raw   = row[COL_ENGLISH]     if len(row) > COL_ENGLISH     else None
-        sp_raw    = row[COL_SPEECH]      if len(row) > COL_SPEECH      else None
-        fnd_raw   = row[COL_FOUNDATIONS] if len(row) > COL_FOUNDATIONS else None
-        nf_raw    = row[COL_NF]          if len(row) > COL_NF          else None
+        level_raw = row[COL_LEVEL]    if len(row) > COL_LEVEL    else None
+        cls_rank  = row[col_cls_rank] if len(row) > col_cls_rank else None
+        lvl_rank  = row[col_lvl_rank] if len(row) > col_lvl_rank else None
+        eng_raw   = row[col_english]  if len(row) > col_english  else None
+        sp_raw    = row[col_speech]   if len(row) > col_speech   else None
+        fnd_raw   = row[col_fnd]      if len(row) > col_fnd      else None
+        nf_raw    = row[col_nf]       if len(row) > col_nf       else None
         if not name_raw or avg_raw is None:
             continue
         try:
@@ -278,7 +290,9 @@ def select_jungbal_winners(
                 pass
 
     def _score(r: dict) -> float:
-        return sum(r.get(k, 0) * w.get(k, 0) for k in JUNGBAL_SUBJECT_KEYS)
+        # total = TOTAL 열(LC 제외 전 과목 합계), lc = Lang. Composition
+        # 개별 과목 가중치 대신 TOTAL+LC 직접 사용 — MT/LT 파일 모두 정확
+        return r.get("total", 0) + r.get("lc", 0)
 
     # ── Step 1: 반별 최고점 학생 1명 선정 (동점 시 lc 높은 순, 이후 파일 순서) ──
     by_class: dict[str, dict] = {}
