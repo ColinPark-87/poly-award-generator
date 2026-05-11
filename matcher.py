@@ -78,10 +78,20 @@ def _to_int(v: Any) -> int:
 def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     wb = openpyxl.load_workbook(file_path, data_only=True)
     ws = wb.active
+
+    # 헤더(2행)에서 "Lang. Composition" 열 위치 자동 감지
+    # ELE 파일 = col 9, LX 파일 = col 10 (Phonics 열이 앞에 추가됨)
+    header = list(next(ws.iter_rows(min_row=2, max_row=2, values_only=True)))
+    col_lc = COL_LC
+    for i, h in enumerate(header):
+        if h and str(h).strip() == "Lang. Composition":
+            col_lc = i
+            break
+
     rows = []
     for row in ws.iter_rows(min_row=3, values_only=True):
         name_raw  = row[COL_NAME]
-        lc_raw    = row[COL_LC]
+        lc_raw    = row[col_lc] if len(row) > col_lc else None
         total_raw = row[COL_TOTAL] if len(row) > COL_TOTAL else None
         avg_raw   = row[COL_AVERAGE]
         cls_raw   = row[COL_CLASS]
@@ -270,26 +280,30 @@ def select_jungbal_winners(
     def _score(r: dict) -> float:
         return sum(r.get(k, 0) * w.get(k, 0) for k in JUNGBAL_SUBJECT_KEYS)
 
-    # ── Step 1: 반별 1등을 가중 합산 기준으로 직접 산출 (동점 모두 포함) ──
-    by_class: dict[str, list[dict]] = defaultdict(list)
+    # ── Step 1: 반별 최고점 학생 1명 선정 (동점 시 lc 높은 순, 이후 파일 순서) ──
+    by_class: dict[str, dict] = {}
     for row in rows:
-        by_class[row["class"]].append(row)
+        cls = row["class"]
+        if cls not in by_class:
+            by_class[cls] = row
+        else:
+            cur = by_class[cls]
+            if _score(row) > _score(cur) or (
+                _score(row) == _score(cur) and row["lc"] > cur["lc"]
+            ):
+                by_class[cls] = row
 
-    class_winners: list[dict] = []
-    for members in by_class.values():
-        if not members:
-            continue
-        top = max(_score(r) for r in members)
-        class_winners.extend(r for r in members if _score(r) == top)
+    # ── Step 2: 레벨별 그룹화 (반 단위로 유지) ──────────────────────────
+    by_level: dict[str, dict[str, dict]] = defaultdict(dict)
+    for cls, row in by_class.items():
+        by_level[row["level"]][cls] = row
 
-    # ── Step 2: 레벨별 그룹화 ────────────────────────────
-    by_level: dict[str, list[dict]] = defaultdict(list)
-    for row in class_winners:
-        by_level[row["level"]].append(row)
-
-    # ── Step 3: 레벨 내 최고 학생 → Achievement, 나머지 → Monthly ──
+    # ── Step 3: Achievement vs Monthly 분류 ─────────────────────────────
     achievement: list[dict] = []
     monthly_winner: list[dict] = []
+
+    # 단일 반 레벨 중 항상 Monthly Test Winner로 배정하는 레벨
+    _MONTHLY_ONLY = {"S1", "LX E", "LX C"}
 
     def _make_student(row: dict) -> dict:
         korean, english = parse_student_name(row["name"])
@@ -306,11 +320,20 @@ def select_jungbal_winners(
             "level_ranking": row["level_ranking"],
         }
 
-    for level_rows in by_level.values():
-        top = max(_score(r) for r in level_rows)
-        for row in level_rows:
+    for level, classes in by_level.items():
+        if len(classes) == 1:
+            # 단일 반 레벨: Monthly 전용이면 Monthly, 아니면 Achievement
+            row = next(iter(classes.values()))
+            if level in _MONTHLY_ONLY:
+                monthly_winner.append(_make_student(row))
+            else:
+                achievement.append(_make_student(row))
+            continue
+        # 복수 반: 레벨 내 최고 점수 반 1개 → Achievement, 나머지 → Monthly
+        best_cls = max(classes, key=lambda c: (_score(classes[c]), classes[c]["lc"]))
+        for cls, row in classes.items():
             s = _make_student(row)
-            if _score(row) == top:
+            if cls == best_cls:
                 achievement.append(s)
             else:
                 monthly_winner.append(s)
