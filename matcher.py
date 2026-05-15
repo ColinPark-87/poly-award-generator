@@ -99,6 +99,15 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
     col_speech   = _find_col("Speech Building", COL_SPEECH)
     col_fnd      = _find_col("Eng. Foundations", COL_FOUNDATIONS)
     col_nf       = _find_col("NF Studies",    COL_NF)
+    col_sr       = _find_col("StarReading",   -1)   # LT 파일에만 존재; MT 파일은 -1
+
+    def _to_float_safe(v: Any) -> float:
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
 
     rows = []
     for row in ws.iter_rows(min_row=3, values_only=True):
@@ -114,6 +123,7 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
         sp_raw    = row[col_speech]   if len(row) > col_speech   else None
         fnd_raw   = row[col_fnd]      if len(row) > col_fnd      else None
         nf_raw    = row[col_nf]       if len(row) > col_nf       else None
+        sr_raw    = row[col_sr]       if col_sr >= 0 and len(row) > col_sr else None
         if not name_raw or avg_raw is None:
             continue
         try:
@@ -131,6 +141,7 @@ def load_rows_from_excel(file_path: str) -> list[dict[str, Any]]:
             "foundations":   _to_int(fnd_raw),
             "lc":            lc,
             "nf":            _to_int(nf_raw),
+            "sr":            _to_float_safe(sr_raw),   # LT: GE값, MT: 0.0
             "total":         total,
             "average":       avg,
             "class_ranking": str(cls_rank).strip() if cls_rank else "",
@@ -294,7 +305,11 @@ def select_jungbal_winners(
         # 개별 과목 가중치 대신 TOTAL+LC 직접 사용 — MT/LT 파일 모두 정확
         return r.get("total", 0) + r.get("lc", 0)
 
-    # ── Step 1: 반별 최고점 학생 수집 (동점 시 전원 공동 수상) ──────────
+    def _sr(r: dict) -> float:
+        return r.get("sr", 0.0)
+
+    # ── Step 1: 반별 최고점 학생 수집 ────────────────────────────────────
+    # 우선순위: Total+LC 높은 순 → SR 높은 순 → SR도 동점이면 공동 수상
     by_class: dict[str, list[dict]] = {}
     for row in rows:
         cls = row["class"]
@@ -302,11 +317,16 @@ def select_jungbal_winners(
             by_class[cls] = [row]
         else:
             best_score = _score(by_class[cls][0])
+            best_sr    = _sr(by_class[cls][0])
             row_score  = _score(row)
+            row_sr     = _sr(row)
             if row_score > best_score:
                 by_class[cls] = [row]
             elif row_score == best_score:
-                by_class[cls].append(row)
+                if row_sr > best_sr:
+                    by_class[cls] = [row]       # SR 높아 단독 승
+                elif row_sr == best_sr:
+                    by_class[cls].append(row)   # SR도 동점 → 공동
 
     # ── Step 2: 레벨별 그룹화 ──────────────────────────────────────────
     by_level: dict[str, dict[str, list[dict]]] = defaultdict(dict)
@@ -339,10 +359,10 @@ def select_jungbal_winners(
                 achievement.append(_make_student(row))
             continue
         # 복수 반: 레벨 내 최고 점수 반 → Achievement, 나머지 → Monthly
-        # 반 대표 점수 = (총점, 반 내 최고 lc) — 레벨 간 동점은 lc로 해소
+        # 반 대표 점수 = (총점, 반 내 최고 SR) — 레벨 간 동점은 SR로 해소
         best_cls = max(
             classes,
-            key=lambda c: (_score(classes[c][0]), max(r["lc"] for r in classes[c])),
+            key=lambda c: (_score(classes[c][0]), max(_sr(r) for r in classes[c])),
         )
         for cls, cls_rows in classes.items():
             for row in cls_rows:
