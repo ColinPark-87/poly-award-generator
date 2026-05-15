@@ -132,36 +132,36 @@ _hint   = "Monthly Test 결과 엑셀(ELE / LX)을 업로드하세요." if not _
 poly_section("01 · 데이터 업로드", _hint)
 
 if _use_sr:
-    up_col1, up_col2, up_col3 = st.columns(3, gap="medium")
-else:
     up_col1, up_col2 = st.columns(2, gap="medium")
-    up_col3 = None
+else:
+    up_col1, up_col2 = st.columns([2, 1], gap="medium")
 
 with up_col1:
-    st.markdown('<div class="poly-drop"><b>Monthly Test · ELE</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
-    uploaded_ele = st.file_uploader("ELE 성적 업로드 (.xlsx)", type=["xlsx"], key="ele_upload")
+    st.markdown('<div class="poly-drop"><b>성적 엑셀</b><span class="hint">&nbsp;·&nbsp;.xlsx&nbsp;·&nbsp;MT/LT 모두 가능, 여러 파일 동시 업로드</span></div>', unsafe_allow_html=True)
+    uploaded_excel_files = st.file_uploader(
+        "성적 엑셀 업로드 (.xlsx)", type=["xlsx"],
+        accept_multiple_files=True, key="excel_upload"
+    )
 
-with up_col2:
-    st.markdown('<div class="poly-drop"><b>Monthly Test · LX</b><span class="hint">&nbsp;·&nbsp;.xlsx</span></div>', unsafe_allow_html=True)
-    uploaded_lx = st.file_uploader("LX 성적 업로드 (.xlsx)", type=["xlsx"], key="lx_upload")
+# 하위 호환 — 기존 코드에서 uploaded_ele / uploaded_lx 를 참조하는 부분 대응
+uploaded_ele = uploaded_excel_files[0] if uploaded_excel_files else None
+uploaded_lx  = uploaded_excel_files[1] if len(uploaded_excel_files) > 1 else None
 
-# 월 감지: ELE → LX → 직접 입력 순으로 시도
-uploaded_monthly = uploaded_ele or uploaded_lx   # 하위 호환용
+# 월 감지: 파일명에서 순서대로 시도 → 없으면 직접 입력
 month = ""
-for _uf in [uploaded_ele, uploaded_lx]:
-    if _uf:
-        _m = extract_month_from_filename(_uf.name)
-        if _m:
-            month = _m
-            break
-if (uploaded_ele or uploaded_lx) and not month:
+for _uf in uploaded_excel_files:
+    _m = extract_month_from_filename(_uf.name)
+    if _m:
+        month = _m
+        break
+if uploaded_excel_files and not month:
     month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="", key="month_input")
 if month:
     st.success(f"감지된 월: **{month}**")
 
 import datetime
-if _use_sr and up_col3 is not None:
-    with up_col3:
+if _use_sr:
+    with up_col2:
         st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
         uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
         if uploaded_sr:

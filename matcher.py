@@ -294,30 +294,28 @@ def select_jungbal_winners(
         # 개별 과목 가중치 대신 TOTAL+LC 직접 사용 — MT/LT 파일 모두 정확
         return r.get("total", 0) + r.get("lc", 0)
 
-    # ── Step 1: 반별 최고점 학생 1명 선정 (동점 시 lc 높은 순, 이후 파일 순서) ──
-    by_class: dict[str, dict] = {}
+    # ── Step 1: 반별 최고점 학생 수집 (동점 시 전원 공동 수상) ──────────
+    by_class: dict[str, list[dict]] = {}
     for row in rows:
         cls = row["class"]
         if cls not in by_class:
-            by_class[cls] = row
+            by_class[cls] = [row]
         else:
-            cur = by_class[cls]
-            if _score(row) > _score(cur) or (
-                _score(row) == _score(cur) and row["lc"] > cur["lc"]
-            ):
-                by_class[cls] = row
+            best_score = _score(by_class[cls][0])
+            row_score  = _score(row)
+            if row_score > best_score:
+                by_class[cls] = [row]
+            elif row_score == best_score:
+                by_class[cls].append(row)
 
-    # ── Step 2: 레벨별 그룹화 (반 단위로 유지) ──────────────────────────
-    by_level: dict[str, dict[str, dict]] = defaultdict(dict)
-    for cls, row in by_class.items():
-        by_level[row["level"]][cls] = row
+    # ── Step 2: 레벨별 그룹화 ──────────────────────────────────────────
+    by_level: dict[str, dict[str, list[dict]]] = defaultdict(dict)
+    for cls, cls_rows in by_class.items():
+        by_level[cls_rows[0]["level"]][cls] = cls_rows
 
     # ── Step 3: Achievement vs Monthly 분류 ─────────────────────────────
     achievement: list[dict] = []
     monthly_winner: list[dict] = []
-
-    # 단일 반 레벨 중 항상 Monthly Test Winner로 배정하는 레벨
-    _MONTHLY_ONLY = {"S1", "LX E", "LX C"}
 
     def _make_student(row: dict) -> dict:
         korean, english = parse_student_name(row["name"])
@@ -336,21 +334,23 @@ def select_jungbal_winners(
 
     for level, classes in by_level.items():
         if len(classes) == 1:
-            # 단일 반 레벨: Monthly 전용이면 Monthly, 아니면 Achievement
-            row = next(iter(classes.values()))
-            if level in _MONTHLY_ONLY:
-                monthly_winner.append(_make_student(row))
-            else:
+            # 단일 반 레벨 → Achievement (동점자 전원)
+            for row in next(iter(classes.values())):
                 achievement.append(_make_student(row))
             continue
-        # 복수 반: 레벨 내 최고 점수 반 1개 → Achievement, 나머지 → Monthly
-        best_cls = max(classes, key=lambda c: (_score(classes[c]), classes[c]["lc"]))
-        for cls, row in classes.items():
-            s = _make_student(row)
-            if cls == best_cls:
-                achievement.append(s)
-            else:
-                monthly_winner.append(s)
+        # 복수 반: 레벨 내 최고 점수 반 → Achievement, 나머지 → Monthly
+        # 반 대표 점수 = (총점, 반 내 최고 lc) — 레벨 간 동점은 lc로 해소
+        best_cls = max(
+            classes,
+            key=lambda c: (_score(classes[c][0]), max(r["lc"] for r in classes[c])),
+        )
+        for cls, cls_rows in classes.items():
+            for row in cls_rows:
+                s = _make_student(row)
+                if cls == best_cls:
+                    achievement.append(s)
+                else:
+                    monthly_winner.append(s)
 
     return {
         "achievement_certificate": achievement,
