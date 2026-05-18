@@ -570,9 +570,31 @@ def _render_yuseong(
         tx = int(mx0) - tb[0]   # 왼쪽 정렬: 언더스코어 시작 위치에서 시작
         draw.text((tx, ty), month_text, font=body_font, fill=(0, 0, 0))
 
+    # ── 가이드선 제거 (날짜 텍스트 그리기 전에 실행) ──────────────
+    # 선 위쪽 깨끗한 배경에서 샘플링 → 안티앨리어싱 오염 없음
+    # 전체 행을 덮어써서 잔상 픽셀 완전 제거
+    for (ly, lx0, lx1) in ph["lines"]:
+        step_x = max(1, int((lx1 - lx0) / 20))
+        bg = []
+        for sx in range(int(lx0), int(lx1), step_x):
+            for dy in range(5, 12):          # 선 5~11px 위 구간
+                sy = int(ly) - dy
+                if 0 <= sy < img.height:
+                    try:
+                        px = img.getpixel((max(0, min(img.width - 1, sx)), sy))
+                        c = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+                        bg.append(c)
+                    except Exception:
+                        pass
+        fill = (tuple(int(sum(c[i] for c in bg) / len(bg)) for i in range(3))
+                if bg else (255, 255, 255))
+        for sy in range(int(ly) - 3, int(ly) + 5):
+            if 0 <= sy < img.height:
+                draw.line([(int(lx0) - 6, sy), (int(lx1) + 6, sy)], fill=fill)
+
     # ── 날짜 ──────────────────────────────────────────────────
     if ph["date"] is not None:
-        # 기존 날짜 span 지우기 (PS: 1215px 너비 공백span 포함)
+        # 기존 날짜 span 지우기 (PS: 넓은 공백span 포함)
         _erase(ph["date"], pad=60)
 
         if award_type == "best_sr":
@@ -581,10 +603,9 @@ def _render_yuseong(
             date_text = f"{month_name}, {year}"
 
         if award_type == "perfect_score" and ph["date_line"] is not None:
-            # PS: 좌측 벡터 언더라인 위에 정중앙 배치
+            # PS: 좌측 벡터 언더라인 위에 배치
             dl_x0, dl_y, dl_x1 = ph["date_line"]
             avail_w = int(dl_x1 - dl_x0)
-            # 사전 계산 크기 우선, 없으면 동적 자동 축소
             if pre_date_fs is not None:
                 body_font = _load_font(body_font_file, pre_date_fs)
             else:
@@ -597,13 +618,13 @@ def _render_yuseong(
                     size -= 2
             tb = draw.textbbox((0, 0), date_text, font=body_font)
             tx = int(dl_x0) + (avail_w - (tb[2] - tb[0])) // 2
-            ty = int(dl_y) - (tb[3] - tb[1]) - 4
+            # visual bottom(tb[3]) 기준으로 ty 계산 → 텍스트 하단이 선 8px 위에 위치
+            ty = int(dl_y) - tb[3] - 8
             draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
         else:
             # HR / SR: 감지된 날짜 bbox 내 중앙 배치
             dx0, dy0, dx1, dy1 = ph["date"]
             avail_w = int(dx1 - dx0)
-            # 사전 계산 크기 우선, 없으면 동적 자동 축소
             if pre_date_fs is not None:
                 body_font = _load_font(body_font_file, pre_date_fs)
             else:
@@ -618,10 +639,6 @@ def _render_yuseong(
             tx  = _centered_x(date_text, body_font, int(dx0), int(dx1))
             ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
             draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
-
-    # ── 가이드선 제거 (배경색 배경 샘플링 erase 재사용) ──────────
-    for (ly, lx0, lx1) in ph["lines"]:
-        _erase((lx0 - 5, ly - 3, lx1 + 5, ly + 3), pad=0)
 
 
 def build_certificate(
