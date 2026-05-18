@@ -548,7 +548,11 @@ def _render_yuseong(
 
         # 월별 test 종류 결정
         test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
-        month_text = f"{month_name} {test_type} {suffix}".strip()
+        # suffix가 구두점('.', ',')으로 시작하면 공백 없이 붙임 (e.g. "." → "April Monthly.")
+        if suffix and suffix[0] in ".,:;":
+            month_text = f"{month_name} {test_type}{suffix}"
+        else:
+            month_text = f"{month_name} {test_type} {suffix}".strip()
         avail_w    = int(ex1 - mx0)
 
         # 동적 폰트 크기 (step=2 for fine-grained fit)
