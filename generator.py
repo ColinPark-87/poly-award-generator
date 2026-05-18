@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import os
 import io
+import json
 import functools
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw, ImageFont
 import config
+
+# 유성 사전 계산 레이아웃 (build_yuseong_layout.py 로 생성)
+# 없으면 빈 dict → _render_yuseong 내부에서 동적 계산으로 폴백
+def _load_yuseong_layout() -> dict:
+    path = os.path.join(config.BASE_DIR, "yuseong_layout.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+_YUSEONG_LAYOUT: dict = _load_yuseong_layout()
 
 
 def _load_font(filename: str, size: int) -> ImageFont.FreeTypeFont:
@@ -441,6 +454,12 @@ def _render_yuseong(
     name_fs_px  = max(int(name_fs_pt * sc), 20)
     body_fs_px  = max(int(body_fs_pt * sc), 14)
 
+    # 사전 계산 레이아웃에서 월별 폰트 크기 조회
+    _lyt      = _YUSEONG_LAYOUT.get(award_type, {})
+    _lyt_mo   = _lyt.get("months", {}).get(month_name, {})
+    pre_month_fs = _lyt_mo.get("month_fs")   # None이면 동적 계산으로 폴백
+    pre_date_fs  = _lyt_mo.get("date_fs")    # None이면 동적 계산으로 폴백
+
     def _erase(bbox_px, pad=8):
         """
         언더스코어(밑줄)가 있는 행만 배경색으로 덮어씀.
@@ -512,8 +531,11 @@ def _render_yuseong(
         test_type  = "Monthly" if award_type == "perfect_score" else "Level"
         month_text = f"{month_name} {test_type}"
         avail_w    = int(mx1 - mx0)
-        # 자동 축소: placeholder 너비를 초과하면 폰트 크기 줄임
-        body_font  = _load_font_fit(body_font_file, month_text, body_fs_px, 12, avail_w, draw)
+        # 사전 계산 크기 우선, 없으면 동적 자동 축소
+        if pre_month_fs is not None:
+            body_font = _load_font(body_font_file, pre_month_fs)
+        else:
+            body_font = _load_font_fit(body_font_file, month_text, body_fs_px, 12, avail_w, draw)
         tb = draw.textbbox((0, 0), month_text, font=body_font)
         ty = int(my0) + (int(my1 - my0) - (tb[3] - tb[1])) // 2 - tb[1]
         tx = _centered_x(month_text, body_font, int(mx0), int(mx1))
@@ -530,31 +552,39 @@ def _render_yuseong(
             date_text = f"{month_name}, {year}"
 
         if award_type == "perfect_score" and ph["date_line"] is not None:
-            # PS: 좌측 벡터 언더라인 위에 정중앙 배치 + 자동 축소
+            # PS: 좌측 벡터 언더라인 위에 정중앙 배치
             dl_x0, dl_y, dl_x1 = ph["date_line"]
             avail_w = int(dl_x1 - dl_x0)
-            size = body_fs_px
-            while size >= 12:
-                body_font = _load_font(body_font_file, size)
-                tb = draw.textbbox((0, 0), date_text, font=body_font)
-                if (tb[2] - tb[0]) <= avail_w:
-                    break
-                size -= 2
+            # 사전 계산 크기 우선, 없으면 동적 자동 축소
+            if pre_date_fs is not None:
+                body_font = _load_font(body_font_file, pre_date_fs)
+            else:
+                size = body_fs_px
+                while size >= 12:
+                    body_font = _load_font(body_font_file, size)
+                    tb = draw.textbbox((0, 0), date_text, font=body_font)
+                    if (tb[2] - tb[0]) <= avail_w:
+                        break
+                    size -= 2
             tb = draw.textbbox((0, 0), date_text, font=body_font)
             tx = int(dl_x0) + (avail_w - (tb[2] - tb[0])) // 2
             ty = int(dl_y) - (tb[3] - tb[1]) - 4
             draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
         else:
-            # HR / SR: 감지된 날짜 bbox 내 중앙 배치 + 자동 축소
+            # HR / SR: 감지된 날짜 bbox 내 중앙 배치
             dx0, dy0, dx1, dy1 = ph["date"]
             avail_w = int(dx1 - dx0)
-            size = body_fs_px
-            while size >= 12:
-                body_font = _load_font(body_font_file, size)
-                tb = draw.textbbox((0, 0), date_text, font=body_font)
-                if (tb[2] - tb[0]) <= avail_w:
-                    break
-                size -= 2
+            # 사전 계산 크기 우선, 없으면 동적 자동 축소
+            if pre_date_fs is not None:
+                body_font = _load_font(body_font_file, pre_date_fs)
+            else:
+                size = body_fs_px
+                while size >= 12:
+                    body_font = _load_font(body_font_file, size)
+                    tb = draw.textbbox((0, 0), date_text, font=body_font)
+                    if (tb[2] - tb[0]) <= avail_w:
+                        break
+                    size -= 2
             tb  = draw.textbbox((0, 0), date_text, font=body_font)
             tx  = _centered_x(date_text, body_font, int(dx0), int(dx1))
             ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
