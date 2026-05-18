@@ -284,6 +284,210 @@ def _inject_jungbal_text_pdf(
     return pdf_bytes
 
 
+@functools.lru_cache(maxsize=None)
+def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
+    """
+    유성 템플릿에서 placeholder bbox + 가이드선 위치 감지 (캐시됨).
+    반환: {'name', 'month', 'date', 'lines', 'name_fs', 'body_fs'}
+    모두 @dpi 기준 픽셀 좌표.
+    """
+    sc = dpi / 72.0
+    doc = fitz.open(pdf_path)
+    page = doc[0]
+    page_h = page.rect.height
+
+    result = {
+        "name":    None,
+        "month":   None,
+        "date":    None,
+        "lines":   [],
+        "name_fs": 48.0,
+        "body_fs": 20.0,
+    }
+
+    # ── 언더스코어 패턴 전체 수집 ─────────────────────────────
+    # search_for는 페이지 좌표(pt), sc 변환 후 px
+    all_hits = {}   # y_key → (x0,y0,x1,y1) pt
+    for pattern in ["______", "_____", "____", "___"]:
+        for h in page.search_for(pattern):
+            y_key = round(h.y0, 1)
+            if y_key not in all_hits:
+                all_hits[y_key] = (h.x0, h.y0, h.x1, h.y1)
+            else:
+                prev = all_hits[y_key]
+                # 더 넓은 것 유지
+                if (h.x1 - h.x0) > (prev[2] - prev[0]):
+                    all_hits[y_key] = (h.x0, h.y0, h.x1, h.y1)
+
+    # y 기준 정렬
+    sorted_hits = sorted(all_hits.values(), key=lambda h: h[1])
+
+    # ── 텍스트 span 분석 ─────────────────────────────────────
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] != 0:
+            continue
+        for line_obj in b["lines"]:
+            for span in line_obj["spans"]:
+                text = span["text"]
+                bbox = span["bbox"]
+                y_mid = (bbox[1] + bbox[3]) / 2
+
+                # 이름 placeholder: 순수 언더스코어, 페이지 상단 70% 내
+                if text.strip() and text.strip().replace("_", "") == "":
+                    if y_mid < page_h * 0.7 and result["name"] is None:
+                        result["name"] = tuple(v * sc for v in bbox)
+                        result["name_fs"] = span["size"]
+
+                # 날짜 – PS: 공백 + ", 2026"
+                elif ", 2026" in text:
+                    result["date"] = tuple(v * sc for v in bbox)
+                    result["body_fs"] = span["size"]
+
+                # 날짜 – HR: 순수 언더스코어 + 마침표 (e.g. "___.")
+                elif (text.strip() and "___" in text
+                      and text.strip().replace("_", "").replace(".", "").strip() == ""
+                      and y_mid > page_h * 0.6):
+                    result["date"] = tuple(v * sc for v in bbox)
+                    result["body_fs"] = span["size"]
+
+                # 날짜 – SR: "Presented in ___"
+                elif "Presented in" in text and "___" in text:
+                    result["date"] = tuple(v * sc for v in bbox)
+                    result["body_fs"] = span["size"]
+
+                # 월 placeholder: "___" 포함 + 다른 텍스트 존재 + name 이후 y
+                elif ("___" in text and text.strip()
+                      and text.strip().replace("_", "").strip() != ""):
+                    if result["name"] is not None:
+                        name_y1 = result["name"][3] / sc     # 픽셀 → pt
+                        if y_mid > name_y1 and y_mid < page_h * 0.75:
+                            # 해당 span 내 언더스코어 위치 찾기
+                            for hx0, hy0, hx1, hy1 in sorted_hits:
+                                if abs(hy0 - bbox[1]) < 3:
+                                    result["month"] = tuple(
+                                        v * sc for v in (hx0, hy0, hx1, hy1)
+                                    )
+                                    break
+
+    # ── 가이드선 수집 ─────────────────────────────────────────
+    for drawing in page.get_drawings():
+        for item in drawing.get("items", []):
+            if item[0] == "l":
+                a, b2 = item[1], item[2]
+                if abs(a.y - b2.y) < 1.0:
+                    result["lines"].append((
+                        a.y * sc,
+                        min(a.x, b2.x) * sc,
+                        max(a.x, b2.x) * sc,
+                    ))
+
+    doc.close()
+    return result
+
+
+def _render_yuseong(
+    img: "Image.Image",
+    draw: "ImageDraw.ImageDraw",
+    template_path: str,
+    award_type: str,
+    english_name: str,
+    student_class: str,
+    month: str,
+    dpi: int = 200,
+) -> None:
+    """
+    유성 캠퍼스 상장: 이름·반·월·날짜 텍스트 삽입 + 가이드선 제거.
+    img/draw는 이미 PDF → PIL 변환된 상태. 직접 수정.
+    """
+    parts = month.rsplit(" ", 1)
+    month_name = parts[0]                       # "April"
+    year = parts[1] if len(parts) > 1 else "2026"
+
+    ph = _scan_yuseong_placeholders(template_path, dpi)
+    sc = dpi / 72.0
+    bg = (255, 255, 255)
+
+    # ── 폰트 선택 ─────────────────────────────────────────────
+    # award_type 별 추출 폰트 → 없으면 유사 대체 폰트
+    _font_map = {
+        "perfect_score": (config.YUSEONG_CORSIVA_FONT,   config.DATE_FONT),
+        "honor_roll":    (config.YUSEONG_TREBUCHET_FONT,  config.CLASS_FONT),
+        "best_sr":       (config.YUSEONG_BASKERVILLE_FONT, config.DATE_FONT),
+    }
+    name_font_file, body_font_file = _font_map.get(
+        award_type, (config.NAME_FONT, config.DATE_FONT)
+    )
+    # 폰트 파일 부재 시 폴백
+    if not os.path.exists(os.path.join(config.FONT_DIR, name_font_file)):
+        name_font_file = config.NAME_FONT
+    if not os.path.exists(os.path.join(config.FONT_DIR, body_font_file)):
+        body_font_file = config.DATE_FONT
+
+    name_fs_pt  = ph["name_fs"]
+    body_fs_pt  = ph["body_fs"]
+    name_fs_px  = max(int(name_fs_pt * sc), 20)
+    body_fs_px  = max(int(body_fs_pt * sc), 14)
+
+    def _erase(bbox_px, pad=8):
+        x0, y0, x1, y1 = bbox_px
+        draw.rectangle([x0 - 2, y0 - 2, x1 + pad, y1 + 2], fill=bg)
+
+    def _centered_x(text, font, x0, x1):
+        tb = draw.textbbox((0, 0), text, font=font)
+        return x0 + ((x1 - x0) - (tb[2] - tb[0])) // 2
+
+    # ── 이름 + 반 ─────────────────────────────────────────────
+    if ph["name"] is not None:
+        nx0, ny0, nx1, ny1 = ph["name"]
+        _erase((nx0, ny0, nx1, ny1), pad=20)
+
+        name_text = f"{english_name} ({student_class})"
+        avail_w   = int(nx1 - nx0)
+        name_font = _load_font_fit(
+            name_font_file, name_text,
+            name_fs_px, 16, avail_w, draw,
+        )
+        tb   = draw.textbbox((0, 0), name_text, font=name_font)
+        tx   = _centered_x(name_text, name_font, int(nx0), int(nx1))
+        ty   = int(ny0) + (int(ny1 - ny0) - (tb[3] - tb[1])) // 2 - tb[1]
+        draw.text((tx, ty), name_text, font=name_font, fill=(0, 0, 0))
+
+    # ── 월 (PS / HR) ──────────────────────────────────────────
+    if ph["month"] is not None and award_type in ("perfect_score", "honor_roll"):
+        mx0, my0, mx1, my1 = ph["month"]
+        _erase((mx0, my0, mx1, my1), pad=30)
+
+        test_type  = "Monthly" if award_type == "perfect_score" else "Level"
+        month_text = f"{month_name} {test_type}"
+        body_font  = _load_font(body_font_file, body_fs_px)
+        tb = draw.textbbox((0, 0), month_text, font=body_font)
+        ty = int(my0) + (int(my1 - my0) - (tb[3] - tb[1])) // 2 - tb[1]
+        draw.text((int(mx0), ty), month_text, font=body_font, fill=(0, 0, 0))
+
+    # ── 날짜 ──────────────────────────────────────────────────
+    if ph["date"] is not None:
+        dx0, dy0, dx1, dy1 = ph["date"]
+        _erase((dx0, dy0, dx1, dy1), pad=60)
+
+        if award_type == "best_sr":
+            date_text = f"Presented in {month}"
+        else:
+            date_text = f"{month_name}, {year}"
+
+        body_font = _load_font(body_font_file, body_fs_px)
+        tb  = draw.textbbox((0, 0), date_text, font=body_font)
+        tx  = _centered_x(date_text, body_font, int(dx0), int(dx1))
+        ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
+        draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
+
+    # ── 가이드선 제거 ─────────────────────────────────────────
+    for (ly, lx0, lx1) in ph["lines"]:
+        draw.rectangle(
+            [int(lx0) - 5, int(ly) - 3, int(lx1) + 5, int(ly) + 3],
+            fill=bg,
+        )
+
+
 def build_certificate(
     award_type:        str,
     english_name:      str,
@@ -292,6 +496,7 @@ def build_certificate(
     output_path:       str,
     template_override: str | None = None,
     extra_text:        str | None = None,   # 정발: 반 이름 or 레벨 이름
+    campus:            str | None = None,
 ) -> None:
     """
     상장 PDF 생성.
@@ -303,7 +508,9 @@ def build_certificate(
     if not template_path or not os.path.exists(template_path):
         raise FileNotFoundError(f"템플릿 없음: {template_path}")
 
-    is_jungbal = award_type in config.JUNGBAL_AWARD_TYPES
+    is_jungbal  = award_type in config.JUNGBAL_AWARD_TYPES
+    is_yuseong  = (campus is not None and "유성" in campus
+                   and award_type in config.YUSEONG_AWARD_TYPES)
 
     if is_jungbal:
         # ── 정발: 내장 PalaceScriptMT로 날짜/반이름 PDF에 직접 삽입 후 래스터라이즈
@@ -318,28 +525,46 @@ def build_certificate(
     draw = ImageDraw.Draw(img)
     w    = img.width
 
-    # ── 반/레벨 이름 (AWARDED TO 아래 고정 Y) ─────────────
-    # 정발: PalaceScriptMT와 유사한 Pinyon Script로 통일
-    _class_font_file = config.JUNGBAL_SCRIPT_FONT if is_jungbal else config.CLASS_FONT
-    class_font = _load_font(_class_font_file, config.CLASS_FONT_SIZE)
-    class_y    = config.CLASS_Y.get(award_type, 520)
-    _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
+    if is_yuseong:
+        # ── 유성: 커스텀 placeholder 기반 텍스트 삽입
+        _render_yuseong(img, draw, template_path, award_type,
+                        english_name, student_class, month, config.DPI)
+    elif is_jungbal:
+        # ── 정발: 반 이름 (Pinyon Script)
+        _class_font_file = config.JUNGBAL_SCRIPT_FONT
+        class_font = _load_font(_class_font_file, config.CLASS_FONT_SIZE)
+        class_y    = config.CLASS_Y.get(award_type, 520)
+        _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
 
-    # ── 학생 이름: 구분선 바로 위 (bbox 하단 정렬) ─────────
-    lines     = _scan_template_lines(template_path, config.DPI, 0)
-    divider_y = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK.get(award_type, 870))
+        lines     = _scan_template_lines(template_path, config.DPI, 0)
+        divider_y = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK.get(award_type, 870))
 
-    _name_font_file = config.JUNGBAL_SCRIPT_FONT if is_jungbal else config.NAME_FONT
-    name_font = _load_font_fit(
-        _name_font_file, english_name,
-        config.NAME_FONT_SIZE.get(award_type, 140), config.NAME_FONT_SIZE_MIN,
-        config.NAME_MAX_WIDTH, draw,
-    )
-    name_bbox = draw.textbbox((0, 0), english_name, font=name_font)
-    name_y    = divider_y - name_bbox[3] - config.NAME_LINE_GAP
-    _draw_centered(draw, english_name, name_y, name_font, config.NAME_COLOR, w)
+        name_font = _load_font_fit(
+            config.JUNGBAL_SCRIPT_FONT, english_name,
+            config.NAME_FONT_SIZE.get(award_type, 140), config.NAME_FONT_SIZE_MIN,
+            config.NAME_MAX_WIDTH, draw,
+        )
+        name_bbox = draw.textbbox((0, 0), english_name, font=name_font)
+        name_y    = divider_y - name_bbox[3] - config.NAME_LINE_GAP
+        _draw_centered(draw, english_name, name_y, name_font, config.NAME_COLOR, w)
+    else:
+        # ── 기존 캠퍼스: 고정 Y 기반 텍스트 배치 ─────────────
+        class_font = _load_font(config.CLASS_FONT, config.CLASS_FONT_SIZE)
+        class_y    = config.CLASS_Y.get(award_type, 520)
+        _draw_centered(draw, student_class, class_y, class_font, config.CLASS_COLOR, w)
 
-    if not is_jungbal:
+        lines     = _scan_template_lines(template_path, config.DPI, 0)
+        divider_y = _find_divider_y(lines, config.DIVIDER_LINE_Y_FALLBACK.get(award_type, 870))
+
+        name_font = _load_font_fit(
+            config.NAME_FONT, english_name,
+            config.NAME_FONT_SIZE.get(award_type, 140), config.NAME_FONT_SIZE_MIN,
+            config.NAME_MAX_WIDTH, draw,
+        )
+        name_bbox = draw.textbbox((0, 0), english_name, font=name_font)
+        name_y    = divider_y - name_bbox[3] - config.NAME_LINE_GAP
+        _draw_centered(draw, english_name, name_y, name_font, config.NAME_COLOR, w)
+
         # ── 기존 캠퍼스: 선 기반 날짜 배치 ───────────────────
         date_line_y = _find_date_line_y(lines, config.DATE_LINE_Y_FALLBACK)
         date_font   = _load_font(config.DATE_FONT, config.DATE_FONT_SIZE)

@@ -54,6 +54,17 @@
       "best_sr": "Best SR"
     }
   },
+  "유성": {
+    "perfect_score_min": 100.0,
+    "honor_roll_min": 95.0,
+    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "award_labels": {
+      "perfect_score": "Perfect Score",
+      "honor_roll": "Honor Roll",
+      "best_writer": "Best Writer",
+      "best_sr": "Best SR"
+    }
+  },
   "정발": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,

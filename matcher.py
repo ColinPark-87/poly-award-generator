@@ -197,6 +197,94 @@ def load_sr_from_csv(file_path: str) -> list[dict[str, Any]]:
     return rows
 
 
+def load_sr_from_excel_yuseong(file_path: str) -> list[dict[str, Any]]:
+    """
+    유성 SR Excel 파싱.
+    - Sheet "SR", 헤더 2행, 데이터 3행~
+    - Class 셀 병합 → carry-forward
+    - 이름: "한국이름 (English Name)" → 영문만 추출, 후행 # 제거
+    - Class: "ClassName\\nTeacher" 또는 "ClassName   Teacher" → 앞부분만
+    - 최고 GE: None/'<K' → 월별 최대값 fallback, 그래도 없으면 학생 제외
+    """
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    ws = wb["SR"] if "SR" in wb.sheetnames else wb.active
+
+    header = [str(c.value).strip() if c.value is not None else "" for c in ws[2]]
+
+    def _col(name: str, default: int = -1) -> int:
+        for i, h in enumerate(header):
+            if h == name:
+                return i
+        return default
+
+    col_name    = _col("Name", 1)
+    col_class   = _col("Class", 2)
+    col_best_ge = _col("최고 GE", 3)
+    month_cols  = [i for i, h in enumerate(header) if h in MONTHS]
+
+    def _parse_class_raw(raw) -> str:
+        s = str(raw).strip()
+        if "\n" in s:
+            return s.split("\n")[0].strip()
+        return re.split(r"\s{2,}", s)[0].strip()
+
+    def _parse_ge_val(v) -> float | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s in ("-", "", "<K"):
+            return None
+        s = s.lstrip(">")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    def _english_name(raw: str) -> str:
+        s = str(raw).strip().lstrip("\n").strip()
+        m = re.search(r'\(([^)]+)\)', s)
+        en = m.group(1).strip() if m else s
+        return en.rstrip("#* \t").strip()
+
+    rows: list[dict[str, Any]] = []
+    current_class = ""
+
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        if col_name >= len(row):
+            continue
+        name_raw = row[col_name]
+        if not name_raw:
+            continue
+        name_str = str(name_raw)
+        # 중복 헤더 행 건너뜀
+        if name_str.strip() in ("Name", "Student"):
+            continue
+
+        # Class carry-forward
+        cls_val = row[col_class] if col_class < len(row) else None
+        if cls_val:
+            current_class = _parse_class_raw(cls_val)
+        if not current_class:
+            continue
+
+        # GE 계산
+        ge = _parse_ge_val(row[col_best_ge]) if col_best_ge < len(row) else None
+        if ge is None and month_cols:
+            monthly = [_parse_ge_val(row[c]) for c in month_cols if c < len(row)]
+            valid   = [v for v in monthly if v is not None]
+            ge = max(valid) if valid else None
+        if ge is None:
+            continue
+
+        rows.append({
+            "class":        current_class,
+            "english_name": _english_name(name_str),
+            "ge":           ge,
+        })
+
+    return rows
+
+
 def select_sr_winners(rows: list[dict[str, Any]]) -> list[dict]:
     """Class/Group별 GE 최고점 학생 1명 선정. 점수 없는 반은 자동 제외."""
     winner_map: dict[str, dict] = {}

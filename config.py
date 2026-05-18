@@ -97,6 +97,14 @@ DIVIDER_LINE_Y_FALLBACK = {
     "level_test_winner":       904,
 }
 
+# ── 유성 전용 폰트 파일 ─────────────────────────────────────
+# templates/유성/에서 추출해 fonts/ 폴더에 저장
+YUSEONG_CORSIVA_FONT     = "MonotypeCorsiva.ttf"     # perfect_score 본문/이름
+YUSEONG_TREBUCHET_FONT   = "TrebuchetMS-Bold.ttf"    # honor_roll 본문/이름
+YUSEONG_BASKERVILLE_FONT = "BaskOldFace.ttf"         # best_sr 본문/이름
+
+YUSEONG_AWARD_TYPES = {"perfect_score", "honor_roll", "best_sr"}
+
 # ── 정발 전용: 가상 자리표시자 기반 텍스트 배치 ──────────────
 # _scan_jungbal_placeholders() 가 PDF에서 자동으로 찾으며,
 # 이 상수들은 감지 실패 시 폴백으로만 사용됨

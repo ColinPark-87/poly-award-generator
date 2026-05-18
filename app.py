@@ -8,7 +8,8 @@ import pandas as pd
 import streamlit as st
 from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners,
-                     select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS)
+                     select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS,
+                     load_sr_from_excel_yuseong)
 from generator import build_certificate, pdf_to_preview_png
 import config as cfg
 
@@ -44,6 +45,39 @@ def _ensure_fonts():
 
 _ensure_fonts()
 
+
+def _ensure_yuseong_fonts():
+    """유성 PDF 템플릿에서 폰트를 추출해 fonts/ 폴더에 저장."""
+    import fitz
+    font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    tmpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "유성")
+    specs = [
+        ("perfect_score.pdf", "Corsiva",   "MonotypeCorsiva.ttf"),
+        ("honor_roll.pdf",    "Trebuchet", "TrebuchetMS-Bold.ttf"),
+        ("best_sr.pdf",       "BaskOld",   "BaskOldFace.ttf"),
+    ]
+    for tmpl_file, keyword, target_name in specs:
+        target_path = os.path.join(font_dir, target_name)
+        if os.path.exists(target_path):
+            continue
+        tmpl_path = os.path.join(tmpl_dir, tmpl_file)
+        if not os.path.exists(tmpl_path):
+            continue
+        try:
+            doc = fitz.open(tmpl_path)
+            for f in doc.get_page_fonts(0, full=True):
+                if keyword.lower() in f[3].lower():
+                    fd = doc.extract_font(f[0])
+                    if fd and fd[3]:
+                        with open(target_path, "wb") as fp:
+                            fp.write(fd[3])
+                    break
+            doc.close()
+        except Exception:
+            pass
+
+_ensure_yuseong_fonts()
+
 st.set_page_config(page_title="Poly 상장 생성기", page_icon="🏅", layout="wide")
 
 from poly_theme import (inject_poly_theme, poly_header, poly_campus_banner,
@@ -58,9 +92,10 @@ poly_header(
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
 _JUNGBAL_CAMPUS = "정발"   # 정발 전용 로직을 적용할 캠퍼스 이름
+_YUSEONG_CAMPUS = "유성"   # 유성 전용 SR Excel 로직
 
 if "campus_list" not in st.session_state:
-    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "정발"]
+    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "유성", "정발"]
 
 _c1, _c2, _c3 = st.columns([1, 1, 2])
 campus = _c1.selectbox("캠퍼스 선택", st.session_state["campus_list"], index=0, key="campus")
@@ -162,8 +197,12 @@ if month:
 import datetime
 if _use_sr:
     with up_col2:
-        st.markdown('<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;.csv&nbsp;UTF-8</span></div>', unsafe_allow_html=True)
-        uploaded_sr = st.file_uploader("Star Summary Report CSV 업로드 (.csv)", type=["csv"], key="sr_upload")
+        _is_yuseong_sr = (campus == _YUSEONG_CAMPUS)
+        _sr_fmt  = ".xlsx" if _is_yuseong_sr else ".csv UTF-8"
+        _sr_type = ["xlsx"] if _is_yuseong_sr else ["csv"]
+        _sr_lbl  = f"Star Summary Report {'Excel' if _is_yuseong_sr else 'CSV'} 업로드"
+        st.markdown(f'<div class="poly-drop"><b>Best SR</b><span class="hint">&nbsp;·&nbsp;{_sr_fmt}</span></div>', unsafe_allow_html=True)
+        uploaded_sr = st.file_uploader(_sr_lbl, type=_sr_type, key="sr_upload")
         if uploaded_sr:
             st.success(f"파일 감지: **{uploaded_sr.name}**")
         _MONTHS = ["January","February","March","April","May","June",
@@ -347,6 +386,7 @@ if _btn_generate:
                                     month=month,
                                     output_path=out_path,
                                     template_override=cfg.get_template_path(campus, award_type),
+                                    campus=campus,
                                 )
                                 with open(out_path, "rb") as f:
                                     pdf_bytes = f.read()
@@ -358,10 +398,15 @@ if _btn_generate:
     sr_list = []
     if uploaded_sr:
         with st.spinner("Best SR 수상자 선정 중..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="wb") as tmp:
+            _yuseong_sr = (campus == _YUSEONG_CAMPUS)
+            _sr_suffix  = ".xlsx" if _yuseong_sr else ".csv"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=_sr_suffix, mode="wb") as tmp:
                 tmp.write(uploaded_sr.read())
                 tmp_path = tmp.name
-            sr_rows = load_sr_from_csv(tmp_path)
+            if _yuseong_sr:
+                sr_rows = load_sr_from_excel_yuseong(tmp_path)
+            else:
+                sr_rows = load_sr_from_csv(tmp_path)
             sr_list = sorted(select_sr_winners(sr_rows), key=_sr_sort_key)
             os.unlink(tmp_path)
 
@@ -380,6 +425,7 @@ if _btn_generate:
                             month=sr_month,
                             output_path=out_path,
                             template_override=cfg.get_template_path(campus, "best_sr"),
+                            campus=campus,
                         )
                         with open(out_path, "rb") as f:
                             pdf_bytes = f.read()
@@ -666,6 +712,7 @@ if _btn_manual:
                 output_path       = _out,
                 template_override = cfg.get_template_path(campus, _manual_award),
                 extra_text        = _manual_extra,
+                campus            = campus,
             )
             with open(_out, "rb") as _f:
                 _manual_pdf = _f.read()
