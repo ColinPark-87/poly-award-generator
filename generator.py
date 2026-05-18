@@ -560,11 +560,17 @@ def _render_yuseong(
             ex1 = ph["month_span"][2]   # full span x1 (suffix 포함)
         else:
             ex1 = mx1
-        _erase((max(0, int(mx0) - 20), my0, ex1, my1), pad=10)
         if award_type == "honor_roll":
-            # 월 밑줄 정밀 제거: 실제 언더라인 y=my1-10~my1-4, offset=17
-            # → src_y = sy+17 ≥ my1-10+17 = my1+7 > my1+6 (erase 범위 밖) → 원본 배경 보장
-            _copy_rows_below(int(my1) - 10, int(my1) - 4, max(0, int(mx0) - 20), min(img.width - 1, int(ex1) + 10), offset=17)
+            # HR 월 bbox: 밑줄만 있고 pre-printed 텍스트 없음 (y=928-986 dark=0%)
+            # _erase 생략 → 균일 fill이 워터마크 그라디언트 파괴하는 문제 방지
+            # ① 전체 너비로 밑줄 행(my1-10~my1-2) 아래 원본 배경으로 교체
+            _copy_rows_below(int(my1) - 10, int(my1) - 2, 0, img.width - 1, offset=17)
+            # ② suffix "." glyph 제거: y=my1-22~my1-11(=975-986), x=mx1 오른쪽만
+            #    src_y = sy+22 ≥ my1 = 997 → 깨끗한 배경 보장
+            _copy_rows_below(int(my1) - 22, int(my1) - 11,
+                             max(0, int(mx1) - 10), img.width - 1, offset=22)
+        else:
+            _erase((max(0, int(mx0) - 20), my0, ex1, my1), pad=10)
 
         # 월별 test 종류 결정
         test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
