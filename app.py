@@ -405,6 +405,8 @@ if _btn_generate:
                         ("honor_roll",    "Honor_Roll",    hr),
                         ("best_writer",   "Best_Writer",   bw),
                     ]:
+                        if award_type not in _award_labels:
+                            continue
                         for s in student_list:
                             safe_name  = s["english_name"].replace(" ", "_")
                             safe_class = s["class"].replace(" ", "_").replace("/", "-")
@@ -549,14 +551,14 @@ if "result" in st.session_state:
             else:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
     else:
-        # ── 기존 캠퍼스 수상자 명단 (4컬럼) ──────────────
-        # 정발 캠퍼스로 전환 후 이전 결과가 남아있을 때 KeyError 방지용 폴백
+        # ── 기존 캠퍼스 수상자 명단 (best_writer 없으면 3컬럼, 있으면 4컬럼) ──
         _lbl_ps = _award_labels.get("perfect_score", "Perfect Score")
         _lbl_hr = _award_labels.get("honor_roll",    "Honor Roll")
         _lbl_bw = _award_labels.get("best_writer",   "Best Writer")
         _lbl_sr = _award_labels.get("best_sr",       "Best SR")
-        col1, col2, col3, col4 = st.columns(4, gap="small")
-        with col1:
+        _has_bw = "best_writer" in _award_labels
+        _res_cols = st.columns(4 if _has_bw else 3, gap="small")
+        with _res_cols[0]:
             st.markdown(
                 f'<div class="poly-card-head"><span class="ttl">🏆 {_lbl_ps}</span>'
                 f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
@@ -568,7 +570,7 @@ if "result" in st.session_state:
                 )
             else:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-        with col2:
+        with _res_cols[1]:
             st.markdown(
                 f'<div class="poly-card-head"><span class="ttl">🎖 {_lbl_hr}</span>'
                 f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
@@ -580,19 +582,20 @@ if "result" in st.session_state:
                 )
             else:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-        with col3:
-            st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">✍️ {_lbl_bw}</span>'
-                f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
-            if bw:
-                ev_bw = st.dataframe(
-                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
-                    hide_index=True, use_container_width=True,
-                    selection_mode="single-row", on_select="rerun", key="sel_bw",
-                )
-            else:
-                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-        with col4:
+        if _has_bw:
+            with _res_cols[2]:
+                st.markdown(
+                    f'<div class="poly-card-head"><span class="ttl">✍️ {_lbl_bw}</span>'
+                    f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
+                if bw:
+                    ev_bw = st.dataframe(
+                        pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
+                        hide_index=True, use_container_width=True,
+                        selection_mode="single-row", on_select="rerun", key="sel_bw",
+                    )
+                else:
+                    st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with _res_cols[3 if _has_bw else 2]:
             st.markdown(
                 f'<div class="poly-card-head"><span class="ttl">⭐ {_lbl_sr}</span>'
                 f'<span class="cnt">{len(sr)}</span></div>', unsafe_allow_html=True)
