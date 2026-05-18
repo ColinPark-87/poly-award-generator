@@ -406,11 +406,18 @@ def _render_yuseong(
     ph = _scan_yuseong_placeholders(template_path, dpi)
     sc = dpi / 72.0
 
-    # ── 폰트 선택 ─────────────────────────────────────────────
-    # 이름: DancingScript-Bold (전체 라틴 글리프 — "(", ")", 숫자, "-" 포함)
-    # 본문: PlayfairDisplay-Regular (날짜·월 텍스트에 숫자·쉼표 필요)
-    name_font_file = config.NAME_FONT        # DancingScript-Bold.ttf
-    body_font_file = config.DATE_FONT        # PlayfairDisplay-Regular.ttf
+    # ── 폰트 선택 (템플릿별 통일) ───────────────────────────────
+    # 각 템플릿의 내장 폰트와 동일한 전체 TTF를 이름·본문 공통으로 사용
+    # → 삽입 텍스트 글씨체가 템플릿 기존 텍스트와 일치, 상장 내 일관성 확보
+    if award_type == "perfect_score":
+        name_font_file = config.YUSEONG_CORSIVA_FONT      # MonotypeCorsiva.ttf
+        body_font_file = config.YUSEONG_CORSIVA_FONT
+    elif award_type == "honor_roll":
+        name_font_file = config.YUSEONG_TREBUCHET_FONT    # TrebuchetMS-Bold.ttf
+        body_font_file = config.YUSEONG_TREBUCHET_FONT
+    else:  # best_sr
+        name_font_file = config.YUSEONG_BASKERVILLE_FONT  # BaskOldFace.ttf
+        body_font_file = config.YUSEONG_BASKERVILLE_FONT
 
     name_fs_pt  = ph["name_fs"]
     body_fs_pt  = ph["body_fs"]
@@ -420,10 +427,14 @@ def _render_yuseong(
     def _erase(bbox_px, pad=8):
         x0, y0, x1, y1 = bbox_px
         sample_x = max(0, min(img.width - 1, int((x0 + x1) / 2)))
-        sample_y = max(0, int(y0) - 15)
+        # 40px 위에서 샘플링 — 워터마크·디자인 요소를 피함
+        sample_y = max(0, int(y0) - 40)
         try:
             px = img.getpixel((sample_x, sample_y))
             fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+            # 너무 어두우면(디자인 요소) 흰색 사용
+            if sum(fill) < 680:
+                fill = (255, 255, 255)
         except Exception:
             fill = (255, 255, 255)
         draw.rectangle([int(x0) - 2, int(y0) - 2, int(x1) + pad, int(y1) + 2], fill=fill)
@@ -451,14 +462,17 @@ def _render_yuseong(
     # ── 월 (PS / HR) ──────────────────────────────────────────
     if ph["month"] is not None and award_type in ("perfect_score", "honor_roll"):
         mx0, my0, mx1, my1 = ph["month"]
-        _erase((mx0, my0, mx1, my1), pad=30)
+        # pad=0: 오른쪽으로 번지지 않아 인접 텍스트("test."/"Test.") 보존
+        _erase((mx0, my0, mx1, my1), pad=0)
 
         test_type  = "Monthly" if award_type == "perfect_score" else "Level"
         month_text = f"{month_name} {test_type}"
         body_font  = _load_font(body_font_file, body_fs_px)
         tb = draw.textbbox((0, 0), month_text, font=body_font)
         ty = int(my0) + (int(my1 - my0) - (tb[3] - tb[1])) // 2 - tb[1]
-        draw.text((int(mx0), ty), month_text, font=body_font, fill=(0, 0, 0))
+        # 중앙 정렬: placeholder 너비 안에서 텍스트를 가운데 배치
+        tx = _centered_x(month_text, body_font, int(mx0), int(mx1))
+        draw.text((tx, ty), month_text, font=body_font, fill=(0, 0, 0))
 
     # ── 날짜 ──────────────────────────────────────────────────
     if ph["date"] is not None:
@@ -479,10 +493,12 @@ def _render_yuseong(
     # ── 가이드선 제거 (배경색 샘플링) ───────────────────────────
     for (ly, lx0, lx1) in ph["lines"]:
         sample_x = max(0, min(img.width - 1, int((lx0 + lx1) / 2)))
-        sample_y = max(0, int(ly) - 15)
+        sample_y = max(0, int(ly) - 40)
         try:
             px = img.getpixel((sample_x, sample_y))
             line_fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+            if sum(line_fill) < 680:
+                line_fill = (255, 255, 255)
         except Exception:
             line_fill = (255, 255, 255)
         draw.rectangle(

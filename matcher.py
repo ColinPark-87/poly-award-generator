@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+import unicodedata
 import openpyxl
 from typing import Any
 
@@ -40,20 +41,27 @@ def clean_class_name(cls: str) -> str:
         'MGT2(t/th)'       → 'MGT2'
         'S1 (M/W/F) 4:20'  → 'S1'
         'GT2 4:40'         → 'GT2'
+        'GT1-보스턴（화목）' → 'GT1-Boston' (NFKC 전각→ASCII, 한국어 제거)
     """
-    cleaned = re.sub(r'\s*\([^)]*\)', '', cls)   # 괄호 그룹 제거
-    cleaned = re.sub(r'\s*\d+:\d+', '', cleaned) # 시간 표기(4:40 등) 제거
-    return cleaned.strip() if cleaned.strip() else cls
+    # NFKC: 전각 문자 → ASCII 등가 (Ａ→A, （→(, ）→) 등)
+    s = unicodedata.normalize('NFKC', str(cls).strip())
+    s = re.sub(r'\s*\d+:\d+', '', s)     # 시간 표기 먼저 제거 (괄호보다 앞에: "(MWF)3:10"에서 숫자 오버랩 방지)
+    s = re.sub(r'\s*\([^)]*\)', '', s)   # ASCII 괄호 그룹 제거
+    # 라틴/숫자/기본 구두점 외 문자(한국어 등) 제거
+    s = re.sub(r'[^\x00-\x7FÀ-ɏ]', '', s).strip()
+    return s if s else str(cls).strip()
 
 
 def parse_student_name(full_name: str) -> tuple[str, str]:
     """'최윤아 (Elena Choi)' → ('최윤아', 'Elena Choi')"""
-    match = re.search(r'\(([^)]+)\)', str(full_name))
+    # NFKC: 전각 문자 정규화 후 괄호 추출 (Ｅlena → Elena 등)
+    s = unicodedata.normalize('NFKC', str(full_name))
+    match = re.search(r'\(([^)]+)\)', s)
     if match:
-        korean = str(full_name)[:match.start()].strip()
+        korean = s[:match.start()].strip()
         english = match.group(1).strip()
         return korean, english
-    return str(full_name).strip(), str(full_name).strip()
+    return s.strip(), s.strip()
 
 
 def extract_month_from_filename(filename: str) -> str:
@@ -241,7 +249,7 @@ def load_sr_from_excel_yuseong(file_path: str) -> list[dict[str, Any]]:
             return None
 
     def _english_name(raw: str) -> str:
-        s = str(raw).strip().lstrip("\n").strip()
+        s = unicodedata.normalize('NFKC', str(raw).strip().lstrip("\n").strip())
         m = re.search(r'\(([^)]+)\)', s)
         en = m.group(1).strip() if m else s
         return en.rstrip("#* \t").strip()
