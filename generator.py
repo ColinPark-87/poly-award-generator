@@ -476,7 +476,8 @@ def _render_yuseong(
         x0, y0, x1, y1 = bbox_px
         step_x = max(1, int((x1 - x0) / 25))
 
-        # ① 배경색 추출 (밝은 픽셀 평균)
+        # ① 배경색 추출: bbox 내 밝은 픽셀(sum>500) 평균
+        # (언더라인·텍스트 픽셀은 sum≈0~300이어서 자동 제외됨)
         bg_samples = []
         for sx in range(int(x0), int(x1), step_x):
             for sy in range(int(y0), int(y1) + 1):
@@ -492,22 +493,34 @@ def _render_yuseong(
                 if bg_samples else (255, 255, 255))
 
         # ② 어두운 행(언더스코어·선이 있는 행)만 지우기
-        # 마침표 같은 작은 문자도 놓치지 않도록 검사 step을 세밀하게 함
+        # 하단 25% 구역은 무조건 지움 (연한 회색 밑줄도 확실히 제거)
         check_step = max(1, min(step_x // 4, 8))
-        for sy in range(int(y0), int(y1) + 2):
+        bottom_zone_y = y1 - (y1 - y0) * 0.25
+        for sy in range(int(y0), int(y1) + 6):  # +6: bbox 아래 살짝 연장해 언더라인 포함
+            if sy >= bottom_zone_y:
+                draw.line([(int(x0) - 2, sy), (int(x1) + pad, sy)], fill=fill)
+                continue
             has_dark = False
             for sx in range(int(x0), int(x1) + 1, check_step):
                 try:
                     px = img.getpixel((max(0, min(img.width - 1, sx)),
                                        max(0, min(img.height - 1, sy))))
                     c = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
-                    if sum(c) < 400:
+                    if sum(c) < 550:
                         has_dark = True
                         break
                 except Exception:
                     pass
             if has_dark:
                 draw.line([(int(x0) - 2, sy), (int(x1) + pad, sy)], fill=fill)
+
+    def _copy_rows_below(y_start, y_end, x_start, x_end, offset=2):
+        """언더라인(y_start~y_end)을 offset px 아래 깨끗한 배경 픽셀로 역방향 복사."""
+        pixels = img.load()
+        for sy in range(y_end, y_start - 1, -1):
+            src_y = min(img.height - 1, sy + offset)
+            for sx in range(max(0, x_start), min(img.width, x_end + 1)):
+                pixels[sx, sy] = pixels[sx, src_y]
 
     def _centered_x(text, font, x0, x1):
         tb = draw.textbbox((0, 0), text, font=font)
@@ -516,7 +529,10 @@ def _render_yuseong(
     # ── 이름 + 반 ─────────────────────────────────────────────
     if ph["name"] is not None:
         nx0, ny0, nx1, ny1 = ph["name"]
-        _erase((nx0, ny0, nx1, ny1), pad=20)
+        # HR처럼 언더라인이 bbox 왼쪽 바깥(x≈30)까지 뻗는 경우 대응 → x0 확장
+        _erase((max(0, int(nx0) - 340), ny0, nx1, ny1), pad=20)
+        if award_type == "honor_roll":
+            _copy_rows_below(int(ny1) - 8, int(ny1) + 3, 0, img.width - 1, offset=2)
 
         name_text = f"{english_name} ({student_class})"
         avail_w   = int(nx1 - nx0)
@@ -544,15 +560,17 @@ def _render_yuseong(
             ex1 = ph["month_span"][2]   # full span x1 (suffix 포함)
         else:
             ex1 = mx1
-        _erase((mx0, my0, ex1, my1), pad=0)
+        _erase((max(0, int(mx0) - 20), my0, ex1, my1), pad=10)
+        if award_type == "honor_roll":
+            _copy_rows_below(int(my1) - 8, int(my1) + 3, 0, img.width - 1, offset=2)
 
         # 월별 test 종류 결정
         test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
-        # suffix가 구두점('.', ',')으로 시작하면 공백 없이 붙임 (e.g. "." → "April Monthly.")
+        # 항상 "test"를 포함 ("April Monthly test." / "February Level test.")
         if suffix and suffix[0] in ".,:;":
-            month_text = f"{month_name} {test_type}{suffix}"
+            month_text = f"{month_name} {test_type} test{suffix}"
         else:
-            month_text = f"{month_name} {test_type} {suffix}".strip()
+            month_text = f"{month_name} {test_type} test {suffix}".strip()
         avail_w    = int(ex1 - mx0)
 
         # 동적 폰트 크기 (step=2 for fine-grained fit)
@@ -572,8 +590,19 @@ def _render_yuseong(
 
     # ── 가이드선 제거 (날짜 텍스트 그리기 전에 실행) ──────────────
     # 선 위쪽 깨끗한 배경에서 샘플링 → 안티앨리어싱 오염 없음
-    # 전체 행을 덮어써서 잔상 픽셀 완전 제거
-    for (ly, lx0, lx1) in ph["lines"]:
+    # PS: 같은 y에 서명 언더라인도 있으므로 date_line만 지움
+    # HR/SR: content 구역 내 모든 선 지움 (하단 30% 서명 보호)
+    page_safe_y = img.height * 0.70
+    if award_type == "perfect_score":
+        # date_line(x0,y,x1) → (y,x0,x1) 형식으로 변환
+        _guide_lines = (
+            [(ph["date_line"][1], ph["date_line"][0], ph["date_line"][2])]
+            if ph["date_line"] is not None else []
+        )
+    else:
+        _guide_lines = [(ly, lx0, lx1) for (ly, lx0, lx1) in ph["lines"]
+                        if ly <= page_safe_y]
+    for (ly, lx0, lx1) in _guide_lines:
         step_x = max(1, int((lx1 - lx0) / 20))
         bg = []
         for sx in range(int(lx0), int(lx1), step_x):
