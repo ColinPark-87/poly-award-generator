@@ -159,6 +159,38 @@ _campus_cfg = cfg.get_campus_cfg(campus)
 _bw_def     = _campus_cfg["bw_min_lc"]
 
 # ══════════════════════════════════════════════════════════
+# 상장 템플릿 확인
+# ══════════════════════════════════════════════════════════
+poly_section("00 · 상장 템플릿 확인", "현재 캠퍼스에 적용된 템플릿을 미리 확인합니다. 생성과 무관한 미리보기입니다.")
+
+with st.expander("템플릿 미리보기 펼치기", expanded=False):
+    _tmpl_labels = _campus_cfg.get("award_labels", {
+        "perfect_score": "Perfect Score",
+        "honor_roll":    "Honor Roll",
+        "best_writer":   "Best Writer",
+        "best_sr":       "Best SR",
+    })
+    _tmpl_types = list(_tmpl_labels.keys())
+    _tmpl_cols  = st.columns(len(_tmpl_types))
+    for _tcol, _at in zip(_tmpl_cols, _tmpl_types):
+        _tmpl_path = cfg.get_template_path(campus, _at)
+        _lbl = _tmpl_labels.get(_at, _at)
+        with _tcol:
+            st.markdown(f"**{_lbl}**")
+            if os.path.exists(_tmpl_path):
+                with open(_tmpl_path, "rb") as _tf:
+                    _tmpl_bytes = _tf.read()
+                st.image(pdf_to_preview_png(_tmpl_bytes, preview_width=400),
+                         use_container_width=True)
+                _campus_tmpl = os.path.join(cfg.TEMPLATE_DIR, campus, f"{_at}.pdf")
+                if os.path.exists(_campus_tmpl):
+                    st.caption("✅ 캠퍼스 전용 템플릿")
+                else:
+                    st.caption("📋 기본 템플릿 사용 중")
+            else:
+                st.warning("템플릿 파일 없음")
+
+# ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
 _use_sr = (campus != _JUNGBAL_CAMPUS)   # 정발은 Best SR 미사용
