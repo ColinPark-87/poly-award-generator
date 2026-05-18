@@ -312,13 +312,15 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
     page_h = page.rect.height
 
     result = {
-        "name":      None,
-        "month":     None,
-        "date":      None,
-        "date_line": None,   # (x0, y, x1) of narrow vector date underline if found
-        "lines":     [],
-        "name_fs":   48.0,
-        "body_fs":   20.0,
+        "name":          None,
+        "month":         None,
+        "month_span":    None,   # full span bbox @dpi px (includes "test."/"Test.")
+        "month_suffix":  None,   # text after underscores in span, e.g. "test." / "Test."
+        "date":          None,
+        "date_line":     None,   # (x0, y, x1) of narrow vector date underline if found
+        "lines":         [],
+        "name_fs":       48.0,
+        "body_fs":       20.0,
     }
 
     # ── 언더스코어 패턴 전체 수집 (union) ───────────────────────
@@ -381,6 +383,11 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
                                     result["month"] = tuple(
                                         v * sc for v in (hx0, hy0, hx1, hy1)
                                     )
+                                    # 전체 span bbox 저장 (지우기 범위: "test."/"Test." 포함)
+                                    result["month_span"] = tuple(v * sc for v in bbox)
+                                    # 언더스코어 뒤의 suffix 추출 (e.g. "test." / "Test.")
+                                    suffix = text.split("_")[-1].strip()
+                                    result["month_suffix"] = suffix
                                     break
 
     # ── 가이드선 수집 ─────────────────────────────────────────
@@ -522,23 +529,41 @@ def _render_yuseong(
         ty   = int(ny0) + (int(ny1 - ny0) - (tb[3] - tb[1])) // 2 - tb[1]
         draw.text((tx, ty), name_text, font=name_font, fill=(0, 0, 0))
 
+    # 2/5/8/11월 = Level test, 나머지 = Monthly test (PS·HR 공통)
+    _LEVEL_TEST_MONTHS = {"February", "May", "August", "November"}
+
     # ── 월 (PS / HR) ──────────────────────────────────────────
     if ph["month"] is not None and award_type in ("perfect_score", "honor_roll"):
         mx0, my0, mx1, my1 = ph["month"]
-        # pad=0: 오른쪽으로 번지지 않아 인접 텍스트("test."/"Test.") 보존
-        _erase((mx0, my0, mx1, my1), pad=0)
 
-        test_type  = "Monthly" if award_type == "perfect_score" else "Level"
-        month_text = f"{month_name} {test_type}"
-        avail_w    = int(mx1 - mx0)
-        # 사전 계산 크기 우선, 없으면 동적 자동 축소
-        if pre_month_fs is not None:
-            body_font = _load_font(body_font_file, pre_month_fs)
+        # 템플릿 suffix 추출 ("test." / "Test." 등)
+        suffix = ph.get("month_suffix") or ""
+
+        # 지우기 범위: 언더스코어 시작 ~ suffix 끝 (전체 span x1)
+        if ph.get("month_span") is not None:
+            ex1 = ph["month_span"][2]   # full span x1 (suffix 포함)
         else:
-            body_font = _load_font_fit(body_font_file, month_text, body_fs_px, 12, avail_w, draw)
+            ex1 = mx1
+        _erase((mx0, my0, ex1, my1), pad=0)
+
+        # 월별 test 종류 결정
+        test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
+        month_text = f"{month_name} {test_type} {suffix}".strip()
+        avail_w    = int(ex1 - mx0)
+
+        # 동적 폰트 크기 (step=2 for fine-grained fit)
+        size = body_fs_px
+        body_font = _load_font(body_font_file, size)
+        while size >= 12:
+            body_font = _load_font(body_font_file, size)
+            tb_check  = draw.textbbox((0, 0), month_text, font=body_font)
+            if (tb_check[2] - tb_check[0]) <= avail_w:
+                break
+            size -= 2
+
         tb = draw.textbbox((0, 0), month_text, font=body_font)
         ty = int(my0) + (int(my1 - my0) - (tb[3] - tb[1])) // 2 - tb[1]
-        tx = _centered_x(month_text, body_font, int(mx0), int(mx1))
+        tx = int(mx0) - tb[0]   # 왼쪽 정렬: 언더스코어 시작 위치에서 시작
         draw.text((tx, ty), month_text, font=body_font, fill=(0, 0, 0))
 
     # ── 날짜 ──────────────────────────────────────────────────
