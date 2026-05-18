@@ -299,12 +299,13 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
     page_h = page.rect.height
 
     result = {
-        "name":    None,
-        "month":   None,
-        "date":    None,
-        "lines":   [],
-        "name_fs": 48.0,
-        "body_fs": 20.0,
+        "name":      None,
+        "month":     None,
+        "date":      None,
+        "date_line": None,   # (x0, y, x1) of narrow vector date underline if found
+        "lines":     [],
+        "name_fs":   48.0,
+        "body_fs":   20.0,
     }
 
     # ── 언더스코어 패턴 전체 수집 (union) ───────────────────────
@@ -381,6 +382,22 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
                         max(a.x, b2.x) * sc,
                     ))
 
+    # ── 날짜 벡터 언더라인 감지 (PS 전용: 좌측 좁은 선) ─────────
+    # PS 템플릿의 날짜 span은 1215px 너비로 잘못 인식됨.
+    # 실제 날짜 필드는 좌측 좁은 벡터 선(~326px) 위에 위치.
+    page_h_px = page.rect.height * sc
+    page_w_px = page.rect.width * sc
+    date_guide = [
+        (ly, lx0, lx1)
+        for (ly, lx0, lx1) in result["lines"]
+        if ly > page_h_px * 0.65    # 페이지 하단 35% 구간
+        and lx0 < page_w_px * 0.4  # 좌측(서명선 제외)
+        and (lx1 - lx0) > 80       # 최소 너비
+    ]
+    if date_guide:
+        dl = min(date_guide, key=lambda l: l[0])   # 가장 위쪽 선
+        result["date_line"] = (dl[1], dl[0], dl[2])  # (x0, y, x1)
+
     doc.close()
     return result
 
@@ -425,19 +442,46 @@ def _render_yuseong(
     body_fs_px  = max(int(body_fs_pt * sc), 14)
 
     def _erase(bbox_px, pad=8):
+        """
+        언더스코어(밑줄)가 있는 행만 배경색으로 덮어씀.
+        - 배경: bbox 내 밝은 픽셀(sum>500)의 평균 → PS 흰 배경 / HR 회색 워터마크 모두 대응
+        - 어두운 행만 지움 → HR 워터마크 텍스처를 최대한 보존
+        """
         x0, y0, x1, y1 = bbox_px
-        sample_x = max(0, min(img.width - 1, int((x0 + x1) / 2)))
-        # 40px 위에서 샘플링 — 워터마크·디자인 요소를 피함
-        sample_y = max(0, int(y0) - 40)
-        try:
-            px = img.getpixel((sample_x, sample_y))
-            fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
-            # 너무 어두우면(디자인 요소) 흰색 사용
-            if sum(fill) < 680:
-                fill = (255, 255, 255)
-        except Exception:
-            fill = (255, 255, 255)
-        draw.rectangle([int(x0) - 2, int(y0) - 2, int(x1) + pad, int(y1) + 2], fill=fill)
+        step_x = max(1, int((x1 - x0) / 25))
+
+        # ① 배경색 추출 (밝은 픽셀 평균)
+        bg_samples = []
+        for sx in range(int(x0), int(x1), step_x):
+            for sy in range(int(y0), int(y1) + 1):
+                try:
+                    px = img.getpixel((max(0, min(img.width - 1, sx)),
+                                       max(0, min(img.height - 1, sy))))
+                    c = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+                    if sum(c) > 500:
+                        bg_samples.append(c)
+                except Exception:
+                    pass
+        fill = (tuple(int(sum(c[i] for c in bg_samples) / len(bg_samples)) for i in range(3))
+                if bg_samples else (255, 255, 255))
+
+        # ② 어두운 행(언더스코어·선이 있는 행)만 지우기
+        # 마침표 같은 작은 문자도 놓치지 않도록 검사 step을 세밀하게 함
+        check_step = max(1, min(step_x // 4, 8))
+        for sy in range(int(y0), int(y1) + 2):
+            has_dark = False
+            for sx in range(int(x0), int(x1) + 1, check_step):
+                try:
+                    px = img.getpixel((max(0, min(img.width - 1, sx)),
+                                       max(0, min(img.height - 1, sy))))
+                    c = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+                    if sum(c) < 400:
+                        has_dark = True
+                        break
+                except Exception:
+                    pass
+            if has_dark:
+                draw.line([(int(x0) - 2, sy), (int(x1) + pad, sy)], fill=fill)
 
     def _centered_x(text, font, x0, x1):
         tb = draw.textbbox((0, 0), text, font=font)
@@ -467,44 +511,58 @@ def _render_yuseong(
 
         test_type  = "Monthly" if award_type == "perfect_score" else "Level"
         month_text = f"{month_name} {test_type}"
-        body_font  = _load_font(body_font_file, body_fs_px)
+        avail_w    = int(mx1 - mx0)
+        # 자동 축소: placeholder 너비를 초과하면 폰트 크기 줄임
+        body_font  = _load_font_fit(body_font_file, month_text, body_fs_px, 12, avail_w, draw)
         tb = draw.textbbox((0, 0), month_text, font=body_font)
         ty = int(my0) + (int(my1 - my0) - (tb[3] - tb[1])) // 2 - tb[1]
-        # 중앙 정렬: placeholder 너비 안에서 텍스트를 가운데 배치
         tx = _centered_x(month_text, body_font, int(mx0), int(mx1))
         draw.text((tx, ty), month_text, font=body_font, fill=(0, 0, 0))
 
     # ── 날짜 ──────────────────────────────────────────────────
     if ph["date"] is not None:
-        dx0, dy0, dx1, dy1 = ph["date"]
-        _erase((dx0, dy0, dx1, dy1), pad=60)
+        # 기존 날짜 span 지우기 (PS: 1215px 너비 공백span 포함)
+        _erase(ph["date"], pad=60)
 
         if award_type == "best_sr":
             date_text = f"Presented in {month}"
         else:
             date_text = f"{month_name}, {year}"
 
-        body_font = _load_font(body_font_file, body_fs_px)
-        tb  = draw.textbbox((0, 0), date_text, font=body_font)
-        tx  = _centered_x(date_text, body_font, int(dx0), int(dx1))
-        ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
-        draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
+        if award_type == "perfect_score" and ph["date_line"] is not None:
+            # PS: 좌측 벡터 언더라인 위에 정중앙 배치 + 자동 축소
+            dl_x0, dl_y, dl_x1 = ph["date_line"]
+            avail_w = int(dl_x1 - dl_x0)
+            size = body_fs_px
+            while size >= 12:
+                body_font = _load_font(body_font_file, size)
+                tb = draw.textbbox((0, 0), date_text, font=body_font)
+                if (tb[2] - tb[0]) <= avail_w:
+                    break
+                size -= 2
+            tb = draw.textbbox((0, 0), date_text, font=body_font)
+            tx = int(dl_x0) + (avail_w - (tb[2] - tb[0])) // 2
+            ty = int(dl_y) - (tb[3] - tb[1]) - 4
+            draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
+        else:
+            # HR / SR: 감지된 날짜 bbox 내 중앙 배치 + 자동 축소
+            dx0, dy0, dx1, dy1 = ph["date"]
+            avail_w = int(dx1 - dx0)
+            size = body_fs_px
+            while size >= 12:
+                body_font = _load_font(body_font_file, size)
+                tb = draw.textbbox((0, 0), date_text, font=body_font)
+                if (tb[2] - tb[0]) <= avail_w:
+                    break
+                size -= 2
+            tb  = draw.textbbox((0, 0), date_text, font=body_font)
+            tx  = _centered_x(date_text, body_font, int(dx0), int(dx1))
+            ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
+            draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
 
-    # ── 가이드선 제거 (배경색 샘플링) ───────────────────────────
+    # ── 가이드선 제거 (배경색 배경 샘플링 erase 재사용) ──────────
     for (ly, lx0, lx1) in ph["lines"]:
-        sample_x = max(0, min(img.width - 1, int((lx0 + lx1) / 2)))
-        sample_y = max(0, int(ly) - 40)
-        try:
-            px = img.getpixel((sample_x, sample_y))
-            line_fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
-            if sum(line_fill) < 680:
-                line_fill = (255, 255, 255)
-        except Exception:
-            line_fill = (255, 255, 255)
-        draw.rectangle(
-            [int(lx0) - 5, int(ly) - 3, int(lx1) + 5, int(ly) + 3],
-            fill=line_fill,
-        )
+        _erase((lx0 - 5, ly - 3, lx1 + 5, ly + 3), pad=0)
 
 
 def build_certificate(
