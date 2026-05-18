@@ -532,7 +532,8 @@ def _render_yuseong(
         # HR처럼 언더라인이 bbox 왼쪽 바깥(x≈30)까지 뻗는 경우 대응 → x0 확장
         _erase((max(0, int(nx0) - 340), ny0, nx1, ny1), pad=20)
         if award_type == "honor_roll":
-            _copy_rows_below(int(ny1) - 8, int(ny1) + 3, 0, img.width - 1, offset=2)
+            # offset=15: 소스 행이 _erase 범위(ny1+6) 밖 → 깨끗한 배경 복사 보장
+            _copy_rows_below(int(ny1) - 8, int(ny1) + 3, 0, img.width - 1, offset=15)
 
         name_text = f"{english_name} ({student_class})"
         avail_w   = int(nx1 - nx0)
@@ -562,7 +563,8 @@ def _render_yuseong(
             ex1 = mx1
         _erase((max(0, int(mx0) - 20), my0, ex1, my1), pad=10)
         if award_type == "honor_roll":
-            _copy_rows_below(int(my1) - 8, int(my1) + 3, 0, img.width - 1, offset=2)
+            # offset=15: 소스 행이 _erase 범위(my1+6) 밖 → 깨끗한 배경 복사 보장
+            _copy_rows_below(int(my1) - 8, int(my1) + 3, max(0, int(mx0) - 20), min(img.width - 1, int(ex1) + 10), offset=15)
 
         # 월별 test 종류 결정
         test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
@@ -623,8 +625,18 @@ def _render_yuseong(
 
     # ── 날짜 ──────────────────────────────────────────────────
     if ph["date"] is not None:
-        # 기존 날짜 span 지우기 (PS: 넓은 공백span 포함)
-        _erase(ph["date"], pad=60)
+        if award_type == "perfect_score" and ph["date_line"] is not None:
+            # PS: date_area(x=253-1468)는 엠블럼(x=910-1237)과 겹침 → 전체 지우면 엠블럼 파괴
+            # 날짜 필드(date_line x=390-717) 왼쪽 영역만 흰색 사각형으로 지움
+            da = ph["date"]           # (x0, y0, x1, y1)
+            dl_x0, dl_y, dl_x1 = ph["date_line"]
+            draw.rectangle(
+                [int(da[0]) - 2, int(da[1]) - 2,
+                 int(dl_x1) + 10, int(dl_y) + 4],
+                fill=(255, 255, 255),
+            )
+        else:
+            _erase(ph["date"], pad=60)
 
         if award_type == "best_sr":
             date_text = f"Presented in {month}"
