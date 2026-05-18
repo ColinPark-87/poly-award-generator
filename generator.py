@@ -307,19 +307,17 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
         "body_fs": 20.0,
     }
 
-    # ── 언더스코어 패턴 전체 수집 ─────────────────────────────
-    # search_for는 페이지 좌표(pt), sc 변환 후 px
-    all_hits = {}   # y_key → (x0,y0,x1,y1) pt
-    for pattern in ["______", "_____", "____", "___"]:
+    # ── 언더스코어 패턴 전체 수집 (union) ───────────────────────
+    # 모든 패턴 hit을 같은 y줄에서 union → 연속 언더스코어 전체 범위 확보
+    all_hits = {}   # y_key → [x0, y0, x1, y1] pt (union)
+    for pattern in ["______", "_____", "____", "___", "__"]:
         for h in page.search_for(pattern):
             y_key = round(h.y0, 1)
             if y_key not in all_hits:
-                all_hits[y_key] = (h.x0, h.y0, h.x1, h.y1)
+                all_hits[y_key] = [h.x0, h.y0, h.x1, h.y1]
             else:
-                prev = all_hits[y_key]
-                # 더 넓은 것 유지
-                if (h.x1 - h.x0) > (prev[2] - prev[0]):
-                    all_hits[y_key] = (h.x0, h.y0, h.x1, h.y1)
+                all_hits[y_key][0] = min(all_hits[y_key][0], h.x0)
+                all_hits[y_key][2] = max(all_hits[y_key][2], h.x1)
 
     # y 기준 정렬
     sorted_hits = sorted(all_hits.values(), key=lambda h: h[1])
@@ -407,23 +405,12 @@ def _render_yuseong(
 
     ph = _scan_yuseong_placeholders(template_path, dpi)
     sc = dpi / 72.0
-    bg = (255, 255, 255)
 
     # ── 폰트 선택 ─────────────────────────────────────────────
-    # award_type 별 추출 폰트 → 없으면 유사 대체 폰트
-    _font_map = {
-        "perfect_score": (config.YUSEONG_CORSIVA_FONT,   config.DATE_FONT),
-        "honor_roll":    (config.YUSEONG_TREBUCHET_FONT,  config.CLASS_FONT),
-        "best_sr":       (config.YUSEONG_BASKERVILLE_FONT, config.DATE_FONT),
-    }
-    name_font_file, body_font_file = _font_map.get(
-        award_type, (config.NAME_FONT, config.DATE_FONT)
-    )
-    # 폰트 파일 부재 시 폴백
-    if not os.path.exists(os.path.join(config.FONT_DIR, name_font_file)):
-        name_font_file = config.NAME_FONT
-    if not os.path.exists(os.path.join(config.FONT_DIR, body_font_file)):
-        body_font_file = config.DATE_FONT
+    # 이름: DancingScript-Bold (전체 라틴 글리프 — "(", ")", 숫자, "-" 포함)
+    # 본문: PlayfairDisplay-Regular (날짜·월 텍스트에 숫자·쉼표 필요)
+    name_font_file = config.NAME_FONT        # DancingScript-Bold.ttf
+    body_font_file = config.DATE_FONT        # PlayfairDisplay-Regular.ttf
 
     name_fs_pt  = ph["name_fs"]
     body_fs_pt  = ph["body_fs"]
@@ -432,7 +419,14 @@ def _render_yuseong(
 
     def _erase(bbox_px, pad=8):
         x0, y0, x1, y1 = bbox_px
-        draw.rectangle([x0 - 2, y0 - 2, x1 + pad, y1 + 2], fill=bg)
+        sample_x = max(0, min(img.width - 1, int((x0 + x1) / 2)))
+        sample_y = max(0, int(y0) - 15)
+        try:
+            px = img.getpixel((sample_x, sample_y))
+            fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+        except Exception:
+            fill = (255, 255, 255)
+        draw.rectangle([int(x0) - 2, int(y0) - 2, int(x1) + pad, int(y1) + 2], fill=fill)
 
     def _centered_x(text, font, x0, x1):
         tb = draw.textbbox((0, 0), text, font=font)
@@ -482,11 +476,18 @@ def _render_yuseong(
         ty  = int(dy0) + (int(dy1 - dy0) - (tb[3] - tb[1])) // 2 - tb[1]
         draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
 
-    # ── 가이드선 제거 ─────────────────────────────────────────
+    # ── 가이드선 제거 (배경색 샘플링) ───────────────────────────
     for (ly, lx0, lx1) in ph["lines"]:
+        sample_x = max(0, min(img.width - 1, int((lx0 + lx1) / 2)))
+        sample_y = max(0, int(ly) - 15)
+        try:
+            px = img.getpixel((sample_x, sample_y))
+            line_fill = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
+        except Exception:
+            line_fill = (255, 255, 255)
         draw.rectangle(
             [int(lx0) - 5, int(ly) - 3, int(lx1) + 5, int(ly) + 3],
-            fill=bg,
+            fill=line_fill,
         )
 
 
