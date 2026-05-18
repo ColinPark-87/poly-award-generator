@@ -492,14 +492,10 @@ def _render_yuseong(
         fill = (tuple(int(sum(c[i] for c in bg_samples) / len(bg_samples)) for i in range(3))
                 if bg_samples else (255, 255, 255))
 
-        # ② 어두운 행(언더스코어·선이 있는 행)만 지우기
-        # 하단 25% 구역은 무조건 지움 (연한 회색 밑줄도 확실히 제거)
+        # ② 어두운 행만 지우기 (dark-pixel 감지, 전 구역 동일 적용)
+        # bottom zone 무조건 지우기 제거 → 워터마크 텍스처 보존
         check_step = max(1, min(step_x // 4, 8))
-        bottom_zone_y = y1 - (y1 - y0) * 0.25
         for sy in range(int(y0), int(y1) + 6):  # +6: bbox 아래 살짝 연장해 언더라인 포함
-            if sy >= bottom_zone_y:
-                draw.line([(int(x0) - 2, sy), (int(x1) + pad, sy)], fill=fill)
-                continue
             has_dark = False
             for sx in range(int(x0), int(x1) + 1, check_step):
                 try:
@@ -529,11 +525,14 @@ def _render_yuseong(
     # ── 이름 + 반 ─────────────────────────────────────────────
     if ph["name"] is not None:
         nx0, ny0, nx1, ny1 = ph["name"]
-        # HR처럼 언더라인이 bbox 왼쪽 바깥(x≈30)까지 뻗는 경우 대응 → x0 확장
-        _erase((max(0, int(nx0) - 340), ny0, nx1, ny1), pad=20)
         if award_type == "honor_roll":
-            # offset=15: 소스 행이 _erase 범위(ny1+6) 밖 → 깨끗한 배경 복사 보장
-            _copy_rows_below(int(ny1) - 8, int(ny1) + 3, 0, img.width - 1, offset=15)
+            # HR 이름 bbox에는 밑줄(underscores)만 있고 다른 pre-printed 텍스트 없음
+            # _erase 생략 → bottom zone 균일 fill이 워터마크 텍스처 파괴하지 않음
+            # 밑줄 행(ny1-9~ny1-3)만 아래 배경 픽셀로 직접 교체 (원본 배경 보장)
+            _copy_rows_below(int(ny1) - 9, int(ny1) - 3, 0, img.width - 1, offset=8)
+        else:
+            # HR처럼 언더라인이 bbox 왼쪽 바깥(x≈30)까지 뻗는 경우 대응 → x0 확장
+            _erase((max(0, int(nx0) - 340), ny0, nx1, ny1), pad=20)
 
         name_text = f"{english_name} ({student_class})"
         avail_w   = int(nx1 - nx0)
@@ -563,8 +562,9 @@ def _render_yuseong(
             ex1 = mx1
         _erase((max(0, int(mx0) - 20), my0, ex1, my1), pad=10)
         if award_type == "honor_roll":
-            # offset=15: 소스 행이 _erase 범위(my1+6) 밖 → 깨끗한 배경 복사 보장
-            _copy_rows_below(int(my1) - 8, int(my1) + 3, max(0, int(mx0) - 20), min(img.width - 1, int(ex1) + 10), offset=15)
+            # 월 밑줄 정밀 제거: 실제 언더라인 y=my1-10~my1-4, offset=17
+            # → src_y = sy+17 ≥ my1-10+17 = my1+7 > my1+6 (erase 범위 밖) → 원본 배경 보장
+            _copy_rows_below(int(my1) - 10, int(my1) - 4, max(0, int(mx0) - 20), min(img.width - 1, int(ex1) + 10), offset=17)
 
         # 월별 test 종류 결정
         test_type  = "Level" if month_name in _LEVEL_TEST_MONTHS else "Monthly"
