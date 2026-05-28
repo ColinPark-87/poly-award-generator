@@ -8,6 +8,7 @@ import requests
 import pandas as pd
 import streamlit as st
 import matcher
+import generator
 from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners,
                      select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS,
@@ -196,9 +197,14 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
 # 분당엠폴리 전용 흐름 (Level Top + Grammar)
 # ══════════════════════════════════════════════════════════
 if campus == "분당엠폴리":
-    # Streamlit Cloud가 옛 matcher 모듈을 캐시한 경우(새 함수 누락) 디스크에서 강제 재로딩
-    if not hasattr(matcher, "load_bundang_best_br"):
+    # Streamlit Cloud가 옛 모듈(matcher/generator)을 캐시한 경우 디스크에서 최신 재로딩
+    # (centering·월변수 등 generator.py 변경이 재배포 후에도 반영되도록 — 세션당 1회)
+    if not st.session_state.get("_bd_mods_fresh"):
         importlib.reload(matcher)
+        importlib.reload(generator)
+        st.session_state["_bd_mods_fresh"] = True
+    build_certificate      = generator.build_certificate
+    pdf_to_preview_png     = generator.pdf_to_preview_png
     load_bundang_level_top = matcher.load_bundang_level_top
     load_bundang_grammar   = matcher.load_bundang_grammar
     load_bundang_best_br   = matcher.load_bundang_best_br
@@ -295,11 +301,10 @@ if campus == "분당엠폴리":
                 st.download_button("PDF 다운로드", _bytes, file_name=_fn,
                                    mime="application/pdf", key=f"{sel_prefix}_dlsel")
 
-    _bd_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_month")
-
     # ── 01 · MT 상장 (Level Top + Grammar) ──────────────────
     poly_section("01 · MT 상장 (Level Top + Grammar)",
                  "MT 종합 엑셀 업로드 → Level Top(Level TOP=1) + Grammar(Eng.Mechanics 만점)")
+    _mt_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_mt_month")
     _mt_file = st.file_uploader("MT 종합 엑셀 (.xlsx)", type=["xlsx"], key="bd_mt_excel")
     if st.button("MT 상장 생성", key="bd_mt_gen", type="primary") and _mt_file:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
@@ -312,13 +317,15 @@ if campus == "분당엠폴리":
             os.unlink(_p)
         _bd_run([("certificate_of_achievement", "Level_Top", _lvl,  "english_name"),
                  ("grammar_certification",      "Grammar",   _gram, "full_name")],
-                "bd_mt_result", "MT", _bd_month)
+                "bd_mt_result", "MT", _mt_month)
     _bd_render("bd_mt_result",
                ["certificate_of_achievement", "grammar_certification"], "bd_mt")
 
     # ── 02 · Best BR 상장 ───────────────────────────────────
     poly_section("02 · Best BR 상장",
-                 "Best Book Reflection List 업로드 → 'List' 시트 전원에게 Best BR 발급")
+                 "Best Book Reflection List 업로드 → 'List' 시트 전원에게 Best BR 발급. "
+                 "아래 '월'이 상장 제목(2026 ○○ Best Book Reflection)에 반영됩니다.")
+    _br_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_br_month")
     _br_file = st.file_uploader("Best Book Reflection List (.xlsx)", type=["xlsx"], key="bd_br_excel")
     if st.button("Best BR 상장 생성", key="bd_br_gen", type="primary") and _br_file:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
@@ -329,7 +336,7 @@ if campus == "분당엠폴리":
         finally:
             os.unlink(_p)
         _bd_run([("best_book_reflection", "Best_BR", _br, "full_name")],
-                "bd_br_result", "BestBR", _bd_month)
+                "bd_br_result", "BestBR", _br_month)
     _bd_render("bd_br_result", ["best_book_reflection"], "bd_br")
     poly_footer()
     st.stop()
