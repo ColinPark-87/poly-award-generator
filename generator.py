@@ -126,10 +126,11 @@ def pdf_to_preview_png(pdf_bytes: bytes, preview_width: int = 700) -> bytes:
     return png
 
 
-def _pdf_page_to_pil(pdf_path: str, page_index: int = 0) -> Image.Image:  # noqa: keep
+def _pdf_page_to_pil(pdf_path: str, page_index: int = 0, dpi: int | None = None) -> Image.Image:  # noqa: keep
     doc  = fitz.open(pdf_path)
     page = doc[page_index]
-    mat  = fitz.Matrix(config.DPI / 72, config.DPI / 72)
+    _dpi = dpi or config.DPI
+    mat  = fitz.Matrix(_dpi / 72, _dpi / 72)
     pix  = page.get_pixmap(matrix=mat)
     img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
     doc.close()
@@ -475,7 +476,8 @@ def _scan_bundang_placeholders(pdf_path: str, dpi: int, award_type: str) -> dict
                     a, b2 = it[1], it[2]
                     if abs(a.y - b2.y) < 1.0:
                         lines.append((a.y * sc, min(a.x, b2.x) * sc, max(a.x, b2.x) * sc))
-        name_lines = [l for l in lines if 700 < l[0] < 1100]   # px @dpi
+        page_h_px = page_h * sc
+        name_lines = [l for l in lines if page_h_px * 0.45 < l[0] < page_h_px * 0.80]
         if name_lines:
             res["name_line"] = max(name_lines, key=lambda l: l[2] - l[1])
         # 월: 제목 "POLY ______" span + 그 안 언더스코어
@@ -894,6 +896,8 @@ def build_certificate(
         _pix  = _doc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
         img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
         _doc.close()
+    elif is_bundang:
+        img = _pdf_page_to_pil(template_path, 0, config.BUNDANG_DPI)
     else:
         img = _pdf_page_to_pil(template_path, 0)
 
@@ -901,9 +905,9 @@ def build_certificate(
     w    = img.width
 
     if is_bundang:
-        # ── 분당엠폴리: placeholder/선 감지 후 텍스트 삽입
+        # ── 분당엠폴리: placeholder/선 감지 후 텍스트 삽입 (고해상도)
         _render_bundang(img, draw, template_path, award_type,
-                        english_name, student_class, month, config.DPI)
+                        english_name, student_class, month, config.BUNDANG_DPI)
     elif is_yuseong:
         # ── 유성: 커스텀 placeholder 기반 텍스트 삽입
         _render_yuseong(img, draw, template_path, award_type,
@@ -954,4 +958,8 @@ def build_certificate(
 
     # ── PDF 저장 ──────────────────────────────────────────
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    img.save(output_path, "PDF", resolution=config.DPI)
+    if is_bundang:
+        img.save(output_path, "PDF", resolution=config.BUNDANG_DPI,
+                 quality=config.BUNDANG_JPEG_QUALITY)
+    else:
+        img.save(output_path, "PDF", resolution=config.DPI)

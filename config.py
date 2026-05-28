@@ -138,3 +138,6 @@ DATE_LINE_Y_FALLBACK = 1295
 BUNDANG_AWARD_TYPES = {"grammar_certification", "certificate_of_achievement"}
 BUNDANG_KR_FONT      = "NanumGothic-Regular.ttf"   # 반코드·월·본문
 BUNDANG_KR_FONT_BOLD = "NanumGothic-Bold.ttf"      # 학생이름·제목 월
+# 선명도: 분당엠폴리는 300 DPI + 고품질 JPEG로 렌더 (배치는 동적 감지라 DPI 무관)
+BUNDANG_DPI          = 300
+BUNDANG_JPEG_QUALITY = 95
