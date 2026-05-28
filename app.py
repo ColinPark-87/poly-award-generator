@@ -283,7 +283,7 @@ if campus == "분당엠폴리":
             _, _folder, _fn, _bytes, _s = _items[_opts.index(_sel)]
             _pc1, _pc2 = st.columns([2, 1])
             with _pc1:
-                st.image(pdf_to_preview_png(_bytes, preview_width=500),
+                st.image(pdf_to_preview_png(_bytes, preview_width=900),
                          use_container_width=True)
             with _pc2:
                 st.download_button("이 상장 PDF 다운로드", _bytes, file_name=_fn,

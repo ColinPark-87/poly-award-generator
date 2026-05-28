@@ -423,178 +423,120 @@ def _scan_yuseong_placeholders(pdf_path: str, dpi: int) -> dict:
     return result
 
 
-@functools.lru_cache(maxsize=None)
-def _scan_bundang_placeholders(pdf_path: str, dpi: int, award_type: str) -> dict:
+def _inject_bundang_text_pdf(
+    template_path: str,
+    award_type: str,
+    english_name: str,
+    student_class: str,
+    month: str,
+) -> bytes:
     """
-    분당엠폴리 템플릿 placeholder 감지 (캐시됨).
-    grammar_certification: name(언더스코어 span), month(언더스코어 hit),
-                           month_line_span(월이 든 본문 줄 전체 span)
-    certificate_of_achievement: name_line((y,x0,x1) 굵은 선), month, month_span
-    모두 @dpi px.
+    분당엠폴리 상장: 텍스트를 PDF에 벡터로 직접 써넣어 선명도 확보.
+    placeholder 밑줄/이름선은 흰 사각형으로 덮어 지우고(가상의 선),
+    이름·반·월을 NanumGothic 벡터 텍스트로 배치. 래스터화 없음.
     """
-    sc = dpi / 72.0
-    doc = fitz.open(pdf_path)
+    month_name = month.rsplit(" ", 1)[0]
+    year = month.rsplit(" ", 1)[1] if " " in month else "2026"
+
+    doc  = fitz.open(template_path)
     page = doc[0]
-    page_h = page.rect.height
-    res = {"name": None, "name_line": None, "month": None,
-           "month_span": None, "month_line_span": None, "year_line_span": None}
+    pw, ph_h = page.rect.width, page.rect.height
+    WHITE = (1, 1, 1)
+
+    nf_b = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.BUNDANG_KR_FONT_BOLD))
+    nf_r = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.BUNDANG_KR_FONT))
+    tw   = fitz.TextWriter(page.rect, color=(0, 0, 0))
+
+    def _cover(x0, y0, x1, y1, pad=1.5):
+        page.draw_rect(fitz.Rect(x0 - pad, y0 - pad, x1 + pad, y1 + pad),
+                       color=None, fill=WHITE)
+
+    def _fit(font, text, max_w, start, minsz=8.0):
+        s = start
+        while s > minsz and font.text_length(text, fontsize=s) > max_w:
+            s -= 0.5
+        return s
+
+    def _centered(font, text, cx0, cx1, baseline_y, size):
+        w = font.text_length(text, fontsize=size)
+        tw.append(fitz.Point(cx0 + ((cx1 - cx0) - w) / 2, baseline_y),
+                  text, font=font, fontsize=size)
 
     spans = [s for b in page.get_text("dict")["blocks"] if b["type"] == 0
              for l in b["lines"] for s in l["spans"]]
 
-    def _underscore_hit_near(y_pt: float, x_lo: float = 0, x_hi: float = 1e9):
+    def _us_hit(y_pt):
         for pat in ("______", "_____", "____", "___"):
             for h in page.search_for(pat):
-                if abs(h.y0 - y_pt) < 6 and h.x0 >= x_lo - 2 and h.x1 <= x_hi + 2:
-                    return (h.x0 * sc, h.y0 * sc, h.x1 * sc, h.y1 * sc)
+                if abs(h.y0 - y_pt) < 6:
+                    return h
         return None
 
-    if award_type == "grammar_certification":
-        # 이름: 순수 언더스코어 span 중 상단 75% 내, 가장 위
-        name_cands = [s for s in spans
-                      if s["text"].strip() and s["text"].strip().replace("_", "") == ""
-                      and (s["bbox"][1] + s["bbox"][3]) / 2 < page_h * 0.75]
-        if name_cands:
-            s = min(name_cands, key=lambda s: s["bbox"][1])
-            res["name"] = tuple(v * sc for v in s["bbox"])
-        # 월: "month of" 포함 줄 span 전체 + 그 안 언더스코어
-        for s in spans:
-            if "month of" in s["text"].lower() and "_" in s["text"]:
-                res["month_line_span"] = tuple(v * sc for v in s["bbox"])
-                res["month"] = _underscore_hit_near(s["bbox"][1])
-                break
-        # 연도: "Proficiency" 포함 + 언더스코어 든 줄 ("on the ___ POLY ...")
-        for s in spans:
-            if "_" in s["text"] and "Proficiency" in s["text"]:
-                res["year_line_span"] = tuple(v * sc for v in s["bbox"])
-                break
-    else:  # certificate_of_achievement
-        lines = []
+    if award_type == "certificate_of_achievement":
+        # 이름선(굵은 가로선) 감지 → 덮고 그 위에 "반 영문이름"
+        nl = None
         for dr in page.get_drawings():
             for it in dr.get("items", []):
                 if it[0] == "l":
-                    a, b2 = it[1], it[2]
-                    if abs(a.y - b2.y) < 1.0:
-                        lines.append((a.y * sc, min(a.x, b2.x) * sc, max(a.x, b2.x) * sc))
-        page_h_px = page_h * sc
-        name_lines = [l for l in lines if page_h_px * 0.45 < l[0] < page_h_px * 0.80]
-        if name_lines:
-            res["name_line"] = max(name_lines, key=lambda l: l[2] - l[1])
-        # 월: 제목 "POLY ______" span + 그 안 언더스코어
+                    a, b = it[1], it[2]
+                    if abs(a.y - b.y) < 1.0 and ph_h * 0.45 < a.y < ph_h * 0.80:
+                        nl = (min(a.x, b.x), max(a.x, b.x), a.y)
+        if nl:
+            lx0, lx1, ly = nl
+            _cover(lx0, ly - 3, lx1, ly + 3, pad=2)
+            name = f"{student_class} {english_name}".strip()
+            sz = _fit(nf_b, name, (lx1 - lx0) * 1.0, 24.0)
+            _centered(nf_b, name, lx0, lx1, ly - 6, sz)
+        # 제목 월: "POLY ______"
         for s in spans:
-            if "_" in s["text"] and "POLY" in s["text"] and s["bbox"][1] < page_h * 0.4:
-                res["month_span"] = tuple(v * sc for v in s["bbox"])
-                res["month"] = _underscore_hit_near(s["bbox"][1])
+            if "_" in s["text"] and "POLY" in s["text"] and s["bbox"][1] < ph_h * 0.4:
+                h = _us_hit(s["bbox"][1])
+                if h is not None:
+                    _cover(h.x0, s["bbox"][1], s["bbox"][2], s["bbox"][3], pad=1)
+                    tw.append(fitz.Point(h.x0 + 4, s["origin"][1]),
+                              month_name, font=nf_b, fontsize=s["size"])
                 break
+    else:  # grammar_certification
+        # 이름 placeholder(순수 언더스코어, 상단 75%) → 덮고 아래로 윗줄+이름
+        nph = None
+        for s in spans:
+            t = s["text"].strip()
+            if t and t.replace("_", "") == "" and (s["bbox"][1] + s["bbox"][3]) / 2 < ph_h * 0.75:
+                if nph is None or s["bbox"][1] < nph[1]:
+                    nph = s["bbox"]
+        if nph:
+            x0, y0, x1, y1 = nph
+            _cover(x0 - 60, y0, x1 + 60, y1, pad=2)
+            cur = y0
+            if student_class:
+                csz = 14.0
+                _centered(nf_r, student_class, 0, pw, cur + csz, csz)
+                cur += csz * 1.4
+            nsz = _fit(nf_b, english_name, pw * 0.80, 34.0)
+            _centered(nf_b, english_name, 0, pw, cur + nsz, nsz)
+        # 월 줄 전체 재작성: "During the month of {month} {year}"
+        for s in spans:
+            if "month of" in s["text"].lower() and "_" in s["text"]:
+                _cover(s["bbox"][0], s["bbox"][1], s["bbox"][2], s["bbox"][3], pad=2)
+                _centered(nf_r, f"During the month of {month_name} {year}",
+                          s["bbox"][0], s["bbox"][2], s["origin"][1], s["size"])
+                break
+        # 연도 줄 전체 재작성: "on the {year} POLY Grammar Proficiency Test,"
+        for s in spans:
+            if "_" in s["text"] and "Proficiency" in s["text"]:
+                _cover(s["bbox"][0], s["bbox"][1], s["bbox"][2], s["bbox"][3], pad=2)
+                _centered(nf_r, f"on the {year} POLY Grammar Proficiency Test,",
+                          s["bbox"][0], s["bbox"][2], s["origin"][1], s["size"])
+                break
+
+    tw.write_text(page)
+    try:
+        doc.subset_fonts()
+    except Exception:
+        pass
+    out = doc.tobytes(garbage=4, deflate=True)
     doc.close()
-    return res
-
-
-def _render_bundang(img, draw, template_path, award_type,
-                    english_name, student_class, month, dpi=200):
-    """분당엠폴리: 반코드·이름·월 배치 + 밑줄/선 제거(가상의 선)."""
-    ph = _scan_bundang_placeholders(template_path, dpi, award_type)
-    month_name = month.rsplit(" ", 1)[0]          # "April 2026" → "April"
-    year = month.rsplit(" ", 1)[1] if " " in month else "2026"
-
-    kr      = config.BUNDANG_KR_FONT
-    kr_bold = config.BUNDANG_KR_FONT_BOLD
-    BLACK   = (0, 0, 0)
-
-    def _bg_fill(x0, y0, x1, y1):
-        """bbox 위쪽 밝은 픽셀 평균 = 배경색."""
-        samp = []
-        sx_step = max(1, int((x1 - x0) / 30))
-        for sx in range(int(x0), int(x1), sx_step):
-            for sy in range(max(0, int(y0) - 30), int(y0)):
-                try:
-                    px = img.getpixel((max(0, min(img.width - 1, sx)), sy))
-                    c = tuple(px[:3]) if len(px) >= 3 else (px, px, px)
-                    if sum(c) > 600:
-                        samp.append(c)
-                except Exception:
-                    pass
-        return (tuple(int(sum(c[i] for c in samp) / len(samp)) for i in range(3))
-                if samp else (255, 255, 255))
-
-    def _erase(x0, y0, x1, y1, pad=8):
-        fill = _bg_fill(x0, y0, x1, y1)
-        draw.rectangle([int(x0) - pad, int(y0) - 4, int(x1) + pad, int(y1) + 6], fill=fill)
-
-    def _fit(font_file, text, max_w, max_size, min_size=20):
-        size = max_size
-        while size >= min_size:
-            f = _load_font(font_file, size)
-            tb = draw.textbbox((0, 0), text, font=f)
-            if (tb[2] - tb[0]) <= max_w:
-                return f
-            size -= 2
-        return _load_font(font_file, min_size)
-
-    def _centered(text, font, x0, x1):
-        tb = draw.textbbox((0, 0), text, font=font)
-        return int(x0) + ((int(x1 - x0)) - (tb[2] - tb[0])) // 2 - tb[0]
-
-    if award_type == "grammar_certification":
-        nx0, ny0, nx1, ny1 = ph["name"]
-        _erase(nx0 - 200, ny0, nx1 + 200, ny1, pad=20)
-        max_w = int(img.width * 0.80)
-        # 윗줄(student_class 필드) — placeholder 위치에 중앙. April 원본 윗줄.
-        cur_top = int(ny0)
-        if student_class:
-            cf  = _fit(kr, student_class, max_w, 60)
-            ctb = draw.textbbox((0, 0), student_class, font=cf)
-            cx  = _centered(student_class, cf, 0, img.width)
-            draw.text((cx, cur_top - ctb[1]), student_class, font=cf, fill=BLACK)
-            cur_top = cur_top + (ctb[3] - ctb[1]) + 20
-        # 이름(크게, 한글+영문) — 아랫줄, 페이지 가로 중앙
-        nf  = _fit(kr_bold, english_name, max_w, 130)
-        ntb = draw.textbbox((0, 0), english_name, font=nf)
-        nx  = _centered(english_name, nf, 0, img.width)
-        draw.text((nx, cur_top - ntb[1]), english_name, font=nf, fill=BLACK)
-        # 월: 본문 줄 전체를 "During the month of {month} {year}"로 중앙 재작성
-        if ph["month_line_span"]:
-            sx0, sy0, sx1, sy1 = ph["month_line_span"]
-            _erase(sx0, sy0, sx1, sy1, pad=10)
-            line_text = f"During the month of {month_name} {year}"
-            bf  = _fit(kr, line_text, int((sx1 - sx0) * 1.4), int((sy1 - sy0) * 0.95))
-            btb = draw.textbbox((0, 0), line_text, font=bf)
-            bx  = _centered(line_text, bf, sx0, sx1)
-            by  = int(sy0) + (int(sy1 - sy0) - (btb[3] - btb[1])) // 2 - btb[1]
-            draw.text((bx, by), line_text, font=bf, fill=BLACK)
-        # 연도 줄 전체를 "on the {year} POLY Grammar Proficiency Test,"로 재작성
-        if ph["year_line_span"]:
-            yx0, yy0, yx1, yy1 = ph["year_line_span"]
-            _erase(yx0, yy0, yx1, yy1, pad=10)
-            year_text = f"on the {year} POLY Grammar Proficiency Test,"
-            yf  = _fit(kr, year_text, int((yx1 - yx0) * 1.3), int((yy1 - yy0) * 0.95))
-            ytb = draw.textbbox((0, 0), year_text, font=yf)
-            ynx = _centered(year_text, yf, yx0, yx1)
-            yny = int(yy0) + (int(yy1 - yy0) - (ytb[3] - ytb[1])) // 2 - ytb[1]
-            draw.text((ynx, yny), year_text, font=yf, fill=BLACK)
-
-    else:  # certificate_of_achievement
-        ly, lx0, lx1 = ph["name_line"]
-        # 굵은 선 지우기 (가상의 선)
-        fill = _bg_fill(lx0, ly - 22, lx1, ly - 6)
-        draw.rectangle([int(lx0) - 10, int(ly) - 6, int(lx1) + 10, int(ly) + 8], fill=fill)
-        # 이름줄: "반코드 영문이름" 1줄, 선 위 중앙
-        name_text = f"{student_class} {english_name}".strip()
-        max_w = int((lx1 - lx0) * 1.05)
-        nf  = _fit(kr_bold, name_text, max_w, 64)
-        ntb = draw.textbbox((0, 0), name_text, font=nf)
-        nx  = _centered(name_text, nf, lx0, lx1)
-        ny  = int(ly) - ntb[3] - 12
-        draw.text((nx, ny), name_text, font=nf, fill=BLACK)
-        # 월 (제목 인라인): 언더스코어만 지우고 제목 폰트 크기로 채움
-        if ph["month"]:
-            mx0, my0, mx1, my1 = ph["month"]
-            _erase(mx0 - 4, my0, mx1 + 4, my1, pad=4)
-            month_title = " " + month_name          # "POLY" 와 붙지 않도록 선행 공백
-            mf  = _fit(kr_bold, month_title, int((mx1 - mx0) * 2.4), int((my1 - my0) * 0.95))
-            mtb = draw.textbbox((0, 0), month_title, font=mf)
-            my  = int(my0) + (int(my1 - my0) - (mtb[3] - mtb[1])) // 2 - mtb[1]
-            draw.text((int(mx0) - mtb[0], my), month_title, font=mf, fill=BLACK)
+    return out
 
 
 def _render_yuseong(
@@ -889,6 +831,15 @@ def build_certificate(
     is_bundang  = (campus is not None and "분당" in campus
                    and award_type in config.BUNDANG_AWARD_TYPES)
 
+    if is_bundang:
+        # ── 분당엠폴리: 벡터 텍스트 직접 주입 (래스터화 없음 → 선명, 파일 작음)
+        pdf_bytes = _inject_bundang_text_pdf(
+            template_path, award_type, english_name, student_class, month)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, "wb") as _f:
+            _f.write(pdf_bytes)
+        return
+
     if is_jungbal:
         # ── 정발: 내장 PalaceScriptMT로 날짜/반이름 PDF에 직접 삽입 후 래스터라이즈
         modified_bytes = _inject_jungbal_text_pdf(template_path, month, extra_text)
@@ -896,19 +847,13 @@ def build_certificate(
         _pix  = _doc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
         img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
         _doc.close()
-    elif is_bundang:
-        img = _pdf_page_to_pil(template_path, 0, config.BUNDANG_DPI)
     else:
         img = _pdf_page_to_pil(template_path, 0)
 
     draw = ImageDraw.Draw(img)
     w    = img.width
 
-    if is_bundang:
-        # ── 분당엠폴리: placeholder/선 감지 후 텍스트 삽입 (고해상도)
-        _render_bundang(img, draw, template_path, award_type,
-                        english_name, student_class, month, config.BUNDANG_DPI)
-    elif is_yuseong:
+    if is_yuseong:
         # ── 유성: 커스텀 placeholder 기반 텍스트 삽입
         _render_yuseong(img, draw, template_path, award_type,
                         english_name, student_class, month, config.DPI)
@@ -958,8 +903,4 @@ def build_certificate(
 
     # ── PDF 저장 ──────────────────────────────────────────
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    if is_bundang:
-        img.save(output_path, "PDF", resolution=config.BUNDANG_DPI,
-                 quality=config.BUNDANG_JPEG_QUALITY)
-    else:
-        img.save(output_path, "PDF", resolution=config.DPI)
+    img.save(output_path, "PDF", resolution=config.DPI)
