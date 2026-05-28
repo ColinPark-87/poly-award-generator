@@ -135,6 +135,7 @@ DATE_FONT      = "PlayfairDisplay-Regular.ttf"
 DATE_LINE_Y_FALLBACK = 1295
 
 # ── 분당엠폴리 전용 ──────────────────────────────────────────
-BUNDANG_AWARD_TYPES = {"grammar_certification", "certificate_of_achievement"}
+BUNDANG_AWARD_TYPES = {"grammar_certification", "certificate_of_achievement",
+                       "best_book_reflection"}
 BUNDANG_KR_FONT      = "NanumGothic-Regular.ttf"   # 반코드·월·본문
 BUNDANG_KR_FONT_BOLD = "NanumGothic-Bold.ttf"      # 학생이름·제목 월

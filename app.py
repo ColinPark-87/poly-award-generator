@@ -10,7 +10,8 @@ from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners,
                      select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS,
                      load_sr_from_excel_yuseong,
-                     load_bundang_level_top, load_bundang_grammar)
+                     load_bundang_level_top, load_bundang_grammar,
+                     load_bundang_best_br)
 from generator import build_certificate, pdf_to_preview_png
 import config as cfg
 
@@ -197,34 +198,52 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
 if campus == "분당엠폴리":
     poly_section(
         "01 · 명단 업로드",
-        "분당엠폴리 종합 엑셀 1개를 업로드하세요. "
-        "Level Top 상장은 초등TOP·중등TOP 시트의 Level TOP=1 학생, "
-        "Grammar 상장은 종합성적관리 시트의 Eng. Mechanics 만점자에게 발급됩니다.",
+        "① MT 종합 엑셀 → Level Top(초등·중등TOP의 Level TOP=1) + Grammar(종합명단 Eng.Mechanics 만점). "
+        "② Best Book Reflection List → Best BR(‘List’ 시트 전원). 둘 중 가진 것만 올려도 됩니다.",
     )
     _BD_MONTHS = ["January", "February", "March", "April", "May", "June",
                   "July", "August", "September", "October", "November", "December"]
     _bd_today = _dt.date.today()
     _bd_default_month = f"{_BD_MONTHS[_bd_today.month - 1]} {_bd_today.year}"
     _bd_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_month")
-    _bd_file  = st.file_uploader("엑셀 업로드 (.xlsx)", type=["xlsx"], key="bd_excel")
+    _bd_u1, _bd_u2 = st.columns(2, gap="medium")
+    with _bd_u1:
+        st.markdown("**① MT 종합 엑셀** (Level Top + Grammar)")
+        _bd_file = st.file_uploader("MT 엑셀 (.xlsx)", type=["xlsx"], key="bd_excel",
+                                    label_visibility="collapsed")
+    with _bd_u2:
+        st.markdown("**② Best Book Reflection List** (Best BR)")
+        _br_file = st.file_uploader("BR List (.xlsx)", type=["xlsx"], key="bd_br_excel",
+                                    label_visibility="collapsed")
 
-    if st.button("상장 생성", key="bd_gen", type="primary") and _bd_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
-            _tmp.write(_bd_file.read())
-            _bd_path = _tmp.name
-        try:
-            lvl_list  = load_bundang_level_top(_bd_path)
-            gram_list = load_bundang_grammar(_bd_path)
-        finally:
-            os.unlink(_bd_path)
+    if st.button("상장 생성", key="bd_gen", type="primary") and (_bd_file or _br_file):
+        lvl_list = gram_list = br_list = []
+        if _bd_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+                _tmp.write(_bd_file.read())
+                _bd_path = _tmp.name
+            try:
+                lvl_list  = load_bundang_level_top(_bd_path)
+                gram_list = load_bundang_grammar(_bd_path)
+            finally:
+                os.unlink(_bd_path)
+        if _br_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+                _tmp.write(_br_file.read())
+                _br_path = _tmp.name
+            try:
+                br_list = load_bundang_best_br(_br_path)
+            finally:
+                os.unlink(_br_path)
 
         _bd_generated = []   # (award_type, folder, filename, pdf_bytes, student)
         _bd_errors    = []
-        with st.spinner(f"상장 생성 중... (Level Top {len(lvl_list)} + Grammar {len(gram_list)})"):
+        with st.spinner(f"상장 생성 중... (Level Top {len(lvl_list)} + Grammar {len(gram_list)} + Best BR {len(br_list)})"):
             with tempfile.TemporaryDirectory() as _td:
                 _bd_jobs = [
-                    ("certificate_of_achievement", "Level_Top", lvl_list, "english_name"),
-                    ("grammar_certification",      "Grammar",   gram_list, "full_name"),
+                    ("certificate_of_achievement", "Level_Top",  lvl_list,  "english_name"),
+                    ("grammar_certification",      "Grammar",    gram_list, "full_name"),
+                    ("best_book_reflection",       "Best_BR",    br_list,   "full_name"),
                 ]
                 for _at, _folder, _students, _name_key in _bd_jobs:
                     _tmpl = cfg.get_template_path(campus, _at)
@@ -253,7 +272,7 @@ if campus == "분당엠폴리":
                 _zf.writestr(f"{_folder}/{_fn}", _bytes)
 
         st.session_state["bd_result"] = {
-            "lvl": lvl_list, "gram": gram_list,
+            "lvl": lvl_list, "gram": gram_list, "br": br_list,
             "generated": _bd_generated, "errors": _bd_errors,
             "month": _bd_month,
             "zip_bytes": _bd_zip.getvalue(),
@@ -265,44 +284,40 @@ if campus == "분당엠폴리":
         if _r["errors"]:
             st.warning("일부 생성 실패:\n" + "\n".join(_r["errors"]))
         st.success(f"총 {len(_r['generated'])}개 생성 "
-                   f"(Level Top {len(_r['lvl'])} · Grammar {len(_r['gram'])})")
+                   f"(Level Top {len(_r['lvl'])} · Grammar {len(_r['gram'])} · Best BR {len(_r.get('br', []))})")
 
         poly_section("02 · 수상자 명단", "학생 이름을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
 
-        _bd_lvl_items  = [g for g in _r["generated"] if g[0] == "certificate_of_achievement"]
-        _bd_gram_items = [g for g in _r["generated"] if g[0] == "grammar_certification"]
-        _ev_lvl = _ev_gram = None
-        _bc1, _bc2 = st.columns(2, gap="small")
-        with _bc1:
-            st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">🥇 Level Top 상장</span>'
-                f'<span class="cnt">{len(_bd_lvl_items)}</span></div>', unsafe_allow_html=True)
-            if _bd_lvl_items:
-                _ev_lvl = st.dataframe(
-                    pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in _bd_lvl_items]),
-                    hide_index=True, use_container_width=True,
-                    selection_mode="single-row", on_select="rerun", key="bd_sel_lvl",
-                )
-            else:
-                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
-        with _bc2:
-            st.markdown(
-                f'<div class="poly-card-head"><span class="ttl">🏆 Grammar 상장</span>'
-                f'<span class="cnt">{len(_bd_gram_items)}</span></div>', unsafe_allow_html=True)
-            if _bd_gram_items:
-                _ev_gram = st.dataframe(
-                    pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in _bd_gram_items]),
-                    hide_index=True, use_container_width=True,
-                    selection_mode="single-row", on_select="rerun", key="bd_sel_gram",
-                )
-            else:
-                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        _bd_cols_def = [
+            ("certificate_of_achievement", "🥇 Level Top 상장",  "bd_sel_lvl"),
+            ("grammar_certification",      "🏆 Grammar 상장",    "bd_sel_gram"),
+            ("best_book_reflection",       "📖 Best BR 상장",     "bd_sel_br"),
+        ]
+        _bd_ev = {}
+        _bd_items_by_at = {}
+        _bd_cols = st.columns(3, gap="small")
+        for _col, (_at_k, _title_k, _key_k) in zip(_bd_cols, _bd_cols_def):
+            _items_k = [g for g in _r["generated"] if g[0] == _at_k]
+            _bd_items_by_at[_at_k] = _items_k
+            with _col:
+                st.markdown(
+                    f'<div class="poly-card-head"><span class="ttl">{_title_k}</span>'
+                    f'<span class="cnt">{len(_items_k)}</span></div>', unsafe_allow_html=True)
+                if _items_k:
+                    _bd_ev[_at_k] = st.dataframe(
+                        pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in _items_k]),
+                        hide_index=True, use_container_width=True,
+                        selection_mode="single-row", on_select="rerun", key=_key_k,
+                    )
+                else:
+                    st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
 
         _bd_sel = None
-        if _ev_lvl and _ev_lvl.selection.rows:
-            _bd_sel = _bd_lvl_items[_ev_lvl.selection.rows[0]]
-        elif _ev_gram and _ev_gram.selection.rows:
-            _bd_sel = _bd_gram_items[_ev_gram.selection.rows[0]]
+        for _at_k, _, _ in _bd_cols_def:
+            _ev_k = _bd_ev.get(_at_k)
+            if _ev_k and _ev_k.selection.rows:
+                _bd_sel = _bd_items_by_at[_at_k][_ev_k.selection.rows[0]]
+                break
 
         poly_section("03 · 다운로드", "전체 ZIP 또는 개별 PDF를 다운로드할 수 있습니다.")
         st.download_button(f"전체 ZIP 다운로드 ({len(_r['generated'])}개)", _r["zip_bytes"],
@@ -317,7 +332,9 @@ if campus == "분당엠폴리":
             with _ci:
                 st.image(pdf_to_preview_png(_bytes, preview_width=900), use_container_width=True)
             with _cf:
-                _tt = "🥇 Level Top 상장" if _at == "certificate_of_achievement" else "🏆 Grammar 상장"
+                _tt = {"certificate_of_achievement": "🥇 Level Top 상장",
+                       "grammar_certification": "🏆 Grammar 상장",
+                       "best_book_reflection": "📖 Best BR 상장"}.get(_at, _at)
                 st.markdown(f"**{_tt}**")
                 st.markdown(f"### {_s['full_name']}")
                 st.caption(_s["class"])

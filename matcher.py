@@ -422,6 +422,48 @@ def load_bundang_grammar(file_path: str) -> list[dict[str, Any]]:
     return out
 
 
+def load_bundang_best_br(file_path: str) -> list[dict[str, Any]]:
+    """'List' 시트의 전원 → Best Book Reflection 상장 명단.
+    한 셀에 콤마로 묶인 두 명은 분리(같은 학급). 'O' 마크는 무관(전원 발급)."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    if "List" not in wb.sheetnames:
+        return []
+    rows = list(wb["List"].iter_rows(values_only=True))
+    hdr_i = ni = None
+    for i, row in enumerate(rows):
+        cells = [_bd_norm(c) for c in row]
+        if "이름" in cells:
+            hdr_i, ni = i, cells.index("이름")
+            break
+    if ni is None:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for row in rows[hdr_i + 1:]:
+        cells = [_bd_norm(c) for c in row]
+        if ni >= len(cells) or not cells[ni] or "(" not in cells[ni]:
+            continue
+        # 학급: 이름 왼쪽 컬럼 중 클래스 코드 패턴(예 5HO1_1)
+        cls = ""
+        for j in range(ni - 1, -1, -1):
+            if j < len(cells) and re.match(r"^\d[A-Z]{2}", cells[j]):
+                cls = cells[j]
+                break
+        # 콤마로 묶인 복수 인원 분리
+        for part in cells[ni].split(","):
+            part = part.strip()
+            if not part or "(" not in part:
+                continue
+            kor, eng = parse_student_name(part)
+            out.append({
+                "class":        cls,
+                "korean_name":  kor,
+                "english_name": eng,
+                "full_name":    part,
+            })
+    return out
+
+
 def select_winners(
     rows: list[dict[str, Any]],
     perfect_score_min: float = 100.0,

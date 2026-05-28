@@ -87,7 +87,8 @@
     "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
     "award_labels": {
       "grammar_certification": "Grammar Certification",
-      "certificate_of_achievement": "Certificate of Achievement"
+      "certificate_of_achievement": "Certificate of Achievement",
+      "best_book_reflection": "Best Book Reflection"
     }
   }
 }

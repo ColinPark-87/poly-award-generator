@@ -496,6 +496,15 @@ def _inject_bundang_text_pdf(
                     tw.append(fitz.Point(h.x0 + 4, s["origin"][1]),
                               month_name, font=nf_b, fontsize=s["size"])
                 break
+    elif award_type == "best_book_reflection":
+        # "presented to" 줄을 앵커로 반코드(좌측)·이름(중앙) 배치 (원본 슬라이드 좌표 기준)
+        pt_y = next((s["origin"][1] for s in spans
+                     if "presented to" in s["text"].lower()), 454.0)
+        if student_class:
+            tw.append(fitz.Point(220, pt_y + 65), student_class, font=nf_r, fontsize=42.0)
+        nsz = _fit(nf_b, english_name, pw * 0.78, 70.0, minsz=36.0)
+        _centered(nf_b, english_name, 0, pw, pt_y + 159, nsz)
+
     else:  # grammar_certification
         # 이름 placeholder(순수 언더스코어, 상단 75%) → 덮고 아래로 윗줄+이름
         nph = None
