@@ -436,7 +436,7 @@ def _scan_bundang_placeholders(pdf_path: str, dpi: int, award_type: str) -> dict
     page = doc[0]
     page_h = page.rect.height
     res = {"name": None, "name_line": None, "month": None,
-           "month_span": None, "month_line_span": None}
+           "month_span": None, "month_line_span": None, "year_line_span": None}
 
     spans = [s for b in page.get_text("dict")["blocks"] if b["type"] == 0
              for l in b["lines"] for s in l["spans"]]
@@ -461,6 +461,11 @@ def _scan_bundang_placeholders(pdf_path: str, dpi: int, award_type: str) -> dict
             if "month of" in s["text"].lower() and "_" in s["text"]:
                 res["month_line_span"] = tuple(v * sc for v in s["bbox"])
                 res["month"] = _underscore_hit_near(s["bbox"][1])
+                break
+        # 연도: "Proficiency" 포함 + 언더스코어 든 줄 ("on the ___ POLY ...")
+        for s in spans:
+            if "_" in s["text"] and "Proficiency" in s["text"]:
+                res["year_line_span"] = tuple(v * sc for v in s["bbox"])
                 break
     else:  # certificate_of_achievement
         lines = []
@@ -531,14 +536,20 @@ def _render_bundang(img, draw, template_path, award_type,
     if award_type == "grammar_certification":
         nx0, ny0, nx1, ny1 = ph["name"]
         _erase(nx0 - 200, ny0, nx1 + 200, ny1, pad=20)
-        baseline_y = ny1                              # 언더스코어 하단 = 이름 하단 기준
         max_w = int(img.width * 0.80)
-        # 이름(크게, 한글+영문) — 페이지 가로 중앙
-        nf  = _fit(kr_bold, english_name, max_w, 150)
+        # 윗줄(student_class 필드) — placeholder 위치에 중앙. April 원본 윗줄.
+        cur_top = int(ny0)
+        if student_class:
+            cf  = _fit(kr, student_class, max_w, 60)
+            ctb = draw.textbbox((0, 0), student_class, font=cf)
+            cx  = _centered(student_class, cf, 0, img.width)
+            draw.text((cx, cur_top - ctb[1]), student_class, font=cf, fill=BLACK)
+            cur_top = cur_top + (ctb[3] - ctb[1]) + 20
+        # 이름(크게, 한글+영문) — 아랫줄, 페이지 가로 중앙
+        nf  = _fit(kr_bold, english_name, max_w, 130)
         ntb = draw.textbbox((0, 0), english_name, font=nf)
         nx  = _centered(english_name, nf, 0, img.width)
-        ny  = int(baseline_y) - ntb[3] - 10
-        draw.text((nx, ny), english_name, font=nf, fill=BLACK)
+        draw.text((nx, cur_top - ntb[1]), english_name, font=nf, fill=BLACK)
         # 월: 본문 줄 전체를 "During the month of {month} {year}"로 중앙 재작성
         if ph["month_line_span"]:
             sx0, sy0, sx1, sy1 = ph["month_line_span"]
@@ -549,6 +560,16 @@ def _render_bundang(img, draw, template_path, award_type,
             bx  = _centered(line_text, bf, sx0, sx1)
             by  = int(sy0) + (int(sy1 - sy0) - (btb[3] - btb[1])) // 2 - btb[1]
             draw.text((bx, by), line_text, font=bf, fill=BLACK)
+        # 연도 줄 전체를 "on the {year} POLY Grammar Proficiency Test,"로 재작성
+        if ph["year_line_span"]:
+            yx0, yy0, yx1, yy1 = ph["year_line_span"]
+            _erase(yx0, yy0, yx1, yy1, pad=10)
+            year_text = f"on the {year} POLY Grammar Proficiency Test,"
+            yf  = _fit(kr, year_text, int((yx1 - yx0) * 1.3), int((yy1 - yy0) * 0.95))
+            ytb = draw.textbbox((0, 0), year_text, font=yf)
+            ynx = _centered(year_text, yf, yx0, yx1)
+            yny = int(yy0) + (int(yy1 - yy0) - (ytb[3] - ytb[1])) // 2 - ytb[1]
+            draw.text((ynx, yny), year_text, font=yf, fill=BLACK)
 
     else:  # certificate_of_achievement
         ly, lx0, lx1 = ph["name_line"]
