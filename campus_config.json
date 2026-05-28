@@ -80,5 +80,14 @@
       "monthly_test_winner": "Monthly Test Winner",
       "level_test_winner": "Level Test Winner"
     }
+  },
+  "분당엠폴리": {
+    "perfect_score_min": 100.0,
+    "honor_roll_min": 95.0,
+    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "award_labels": {
+      "grammar_certification": "Grammar Certification",
+      "certificate_of_achievement": "Certificate of Achievement"
+    }
   }
 }
