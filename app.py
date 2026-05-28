@@ -201,7 +201,10 @@ if campus == "분당엠폴리":
         "Level Top 상장은 초등TOP·중등TOP 시트의 Level TOP=1 학생, "
         "Grammar 상장은 종합성적관리 시트의 Eng. Mechanics 만점자에게 발급됩니다.",
     )
-    _bd_default_month = f"{_dt.date(2026, _dt.date.today().month, 1):%B} 2026"
+    _BD_MONTHS = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"]
+    _bd_today = _dt.date.today()
+    _bd_default_month = f"{_BD_MONTHS[_bd_today.month - 1]} {_bd_today.year}"
     _bd_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_month")
     _bd_file  = st.file_uploader("엑셀 업로드 (.xlsx)", type=["xlsx"], key="bd_excel")
 
@@ -264,19 +267,27 @@ if campus == "분당엠폴리":
         st.success(f"총 {len(_r['generated'])}개 생성 "
                    f"(Level Top {len(_r['lvl'])} · Grammar {len(_r['gram'])})")
 
-        poly_section("02 · 다운로드", "전체 ZIP 또는 개별 PDF를 받을 수 있습니다.")
+        poly_section("02 · 미리보기 & 다운로드",
+                     "학생을 선택하면 상장 미리보기가 표시됩니다. 전체 ZIP 또는 개별 PDF를 받을 수 있습니다.")
         st.download_button("📦 전체 ZIP 다운로드", _r["zip_bytes"],
                            file_name=_r["zip_name"], mime="application/zip", key="bd_zip_dl")
 
         for _at, _title in [("certificate_of_achievement", "Level Top 상장"),
                             ("grammar_certification",      "Grammar 상장")]:
             _items = [g for g in _r["generated"] if g[0] == _at]
-            with st.expander(f"{_title} ({len(_items)}명)", expanded=False):
-                for _i, (_, _folder, _fn, _bytes, _s) in enumerate(_items):
-                    _c1, _c2 = st.columns([3, 1])
-                    _c1.write(f"{_s['class']}  ·  {_s['full_name']}")
-                    _c2.download_button("PDF", _bytes, file_name=_fn,
-                                        mime="application/pdf", key=f"bd_dl_{_at}_{_i}")
+            if not _items:
+                continue
+            st.markdown(f"#### {_title} ({len(_items)}명)")
+            _opts = [f"{s['class']} · {s['full_name']}" for (*_, s) in _items]
+            _sel  = st.selectbox(f"{_title} 학생 선택", _opts, key=f"bd_sel_{_at}")
+            _, _folder, _fn, _bytes, _s = _items[_opts.index(_sel)]
+            _pc1, _pc2 = st.columns([2, 1])
+            with _pc1:
+                st.image(pdf_to_preview_png(_bytes, preview_width=500),
+                         use_container_width=True)
+            with _pc2:
+                st.download_button("이 상장 PDF 다운로드", _bytes, file_name=_fn,
+                                   mime="application/pdf", key=f"bd_dl_{_at}")
 
     poly_footer()
     st.stop()
