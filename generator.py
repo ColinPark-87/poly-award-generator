@@ -501,9 +501,26 @@ def _inject_bundang_text_pdf(
         pt_y = next((s["origin"][1] for s in spans
                      if "presented to" in s["text"].lower()), 454.0)
         if student_class:
-            tw.append(fitz.Point(220, pt_y + 65), student_class, font=nf_r, fontsize=42.0)
+            _centered(nf_r, student_class, 0, pw, pt_y + 65, 42.0)
         nsz = _fit(nf_b, english_name, pw * 0.78, 70.0, minsz=36.0)
         _centered(nf_b, english_name, 0, pw, pt_y + 159, nsz)
+        # 제목 월 변수화: "{year} {month} Best Book Reflection" 전체를 서리프로 재작성
+        for s in spans:
+            if "Best Book Reflection" in s["text"]:
+                tx0, ty0, tx1, ty1 = s["bbox"]
+                _cover(tx0, ty0, tx1, ty1, pad=3)
+                pf = fitz.Font(fontfile=os.path.join(config.FONT_DIR,
+                                                      "PlayfairDisplay-Regular.ttf"))
+                title = f"{year} {month_name} Best Book Reflection"
+                tsz = s["size"]
+                while tsz > 24 and pf.text_length(title, fontsize=tsz) > pw * 0.92:
+                    tsz -= 1
+                tw_title = fitz.TextWriter(page.rect, color=(48 / 255, 73 / 255, 105 / 255))
+                _tw_w = pf.text_length(title, fontsize=tsz)
+                tw_title.append(fitz.Point((pw - _tw_w) / 2, s["origin"][1]),
+                                title, font=pf, fontsize=tsz)
+                tw_title.write_text(page)
+                break
 
     else:  # grammar_certification
         # 이름 placeholder(순수 언더스코어, 상단 75%) → 덮고 아래로 윗줄+이름
