@@ -277,6 +277,9 @@ if campus == "분당엠폴리":
                     )
                 else:
                     st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        # 전체 항목 평탄화 (셀렉트박스 미리보기용)
+        flat = [it for _at_k in award_types for it in items_by[_at_k]]
+        # 1) 명단(dataframe) 행 클릭 선택
         sel = None
         for _at_k in award_types:
             _e = ev.get(_at_k)
@@ -286,9 +289,15 @@ if campus == "분당엠폴리":
         st.download_button(f"전체 ZIP 다운로드 ({len(r['generated'])}개)", r["zip_bytes"],
                            file_name=r["zip_name"], mime="application/zip",
                            type="primary", key=f"{sel_prefix}_zip")
+        # 2) 셀렉트박스 미리보기 선택 (클릭이 안 잡히는 환경 대비, 항상 동작)
+        if flat:
+            _opts = ["— 미리보기할 학생 선택 —"] + [f"{s['class']} · {s['full_name']}" for (*_, s) in flat]
+            _pick = st.selectbox("상장 미리보기", _opts, key=f"{sel_prefix}_psel")
+            if sel is None and _pick != _opts[0]:
+                sel = flat[_opts.index(_pick) - 1]
         st.markdown("<br>", unsafe_allow_html=True)
         if sel is None:
-            st.info("위 명단에서 학생을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
+            st.info("위 명단에서 학생을 클릭하거나 '상장 미리보기'에서 선택하면 미리보기가 표시됩니다.")
         else:
             _at, _folder, _fn, _bytes, _s = sel
             _ci, _cf = st.columns([2, 1])
