@@ -267,27 +267,62 @@ if campus == "분당엠폴리":
         st.success(f"총 {len(_r['generated'])}개 생성 "
                    f"(Level Top {len(_r['lvl'])} · Grammar {len(_r['gram'])})")
 
-        poly_section("02 · 미리보기 & 다운로드",
-                     "학생을 선택하면 상장 미리보기가 표시됩니다. 전체 ZIP 또는 개별 PDF를 받을 수 있습니다.")
-        st.download_button("📦 전체 ZIP 다운로드", _r["zip_bytes"],
-                           file_name=_r["zip_name"], mime="application/zip", key="bd_zip_dl")
+        poly_section("02 · 수상자 명단", "학생 이름을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
 
-        for _at, _title in [("certificate_of_achievement", "Level Top 상장"),
-                            ("grammar_certification",      "Grammar 상장")]:
-            _items = [g for g in _r["generated"] if g[0] == _at]
-            if not _items:
-                continue
-            st.markdown(f"#### {_title} ({len(_items)}명)")
-            _opts = [f"{s['class']} · {s['full_name']}" for (*_, s) in _items]
-            _sel  = st.selectbox(f"{_title} 학생 선택", _opts, key=f"bd_sel_{_at}")
-            _, _folder, _fn, _bytes, _s = _items[_opts.index(_sel)]
-            _pc1, _pc2 = st.columns([2, 1])
-            with _pc1:
-                st.image(pdf_to_preview_png(_bytes, preview_width=900),
-                         use_container_width=True)
-            with _pc2:
-                st.download_button("이 상장 PDF 다운로드", _bytes, file_name=_fn,
-                                   mime="application/pdf", key=f"bd_dl_{_at}")
+        _bd_lvl_items  = [g for g in _r["generated"] if g[0] == "certificate_of_achievement"]
+        _bd_gram_items = [g for g in _r["generated"] if g[0] == "grammar_certification"]
+        _ev_lvl = _ev_gram = None
+        _bc1, _bc2 = st.columns(2, gap="small")
+        with _bc1:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🥇 Level Top 상장</span>'
+                f'<span class="cnt">{len(_bd_lvl_items)}</span></div>', unsafe_allow_html=True)
+            if _bd_lvl_items:
+                _ev_lvl = st.dataframe(
+                    pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in _bd_lvl_items]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="bd_sel_lvl",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+        with _bc2:
+            st.markdown(
+                f'<div class="poly-card-head"><span class="ttl">🏆 Grammar 상장</span>'
+                f'<span class="cnt">{len(_bd_gram_items)}</span></div>', unsafe_allow_html=True)
+            if _bd_gram_items:
+                _ev_gram = st.dataframe(
+                    pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in _bd_gram_items]),
+                    hide_index=True, use_container_width=True,
+                    selection_mode="single-row", on_select="rerun", key="bd_sel_gram",
+                )
+            else:
+                st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
+
+        _bd_sel = None
+        if _ev_lvl and _ev_lvl.selection.rows:
+            _bd_sel = _bd_lvl_items[_ev_lvl.selection.rows[0]]
+        elif _ev_gram and _ev_gram.selection.rows:
+            _bd_sel = _bd_gram_items[_ev_gram.selection.rows[0]]
+
+        poly_section("03 · 다운로드", "전체 ZIP 또는 개별 PDF를 다운로드할 수 있습니다.")
+        st.download_button(f"전체 ZIP 다운로드 ({len(_r['generated'])}개)", _r["zip_bytes"],
+                           file_name=_r["zip_name"], mime="application/zip",
+                           type="primary", key="bd_zip_dl")
+        st.markdown("<br>", unsafe_allow_html=True)
+        if _bd_sel is None:
+            st.info("위 명단에서 학생을 클릭하면 상장 미리보기와 다운로드가 표시됩니다.")
+        else:
+            _at, _folder, _fn, _bytes, _s = _bd_sel
+            _ci, _cf = st.columns([2, 1])
+            with _ci:
+                st.image(pdf_to_preview_png(_bytes, preview_width=900), use_container_width=True)
+            with _cf:
+                _tt = "🥇 Level Top 상장" if _at == "certificate_of_achievement" else "🏆 Grammar 상장"
+                st.markdown(f"**{_tt}**")
+                st.markdown(f"### {_s['full_name']}")
+                st.caption(_s["class"])
+                st.download_button("PDF 다운로드", _bytes, file_name=_fn,
+                                   mime="application/pdf", key="bd_dl_sel")
 
     poly_footer()
     st.stop()
