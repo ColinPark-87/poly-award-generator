@@ -483,10 +483,10 @@ def _inject_bundang_text_pdf(
                         nl = (min(a.x, b.x), max(a.x, b.x), a.y)
         if nl:
             lx0, lx1, ly = nl
-            _cover(lx0, ly - 3, lx1, ly + 3, pad=2)
+            # 원본처럼 이름선은 유지하고 그 위에 이름 배치 (선 지우지 않음)
             name = f"{student_class} {english_name}".strip()
-            sz = _fit(nf_b, name, (lx1 - lx0) * 1.0, 24.0)
-            _centered(nf_b, name, lx0, lx1, ly - 6, sz)
+            sz = _fit(nf_b, name, (lx1 - lx0) * 1.05, 30.0)
+            _centered(nf_b, name, lx0, lx1, ly - 8, sz)
         # 제목 월: "POLY ______"
         for s in spans:
             if "_" in s["text"] and "POLY" in s["text"] and s["bbox"][1] < ph_h * 0.4:
@@ -506,14 +506,20 @@ def _inject_bundang_text_pdf(
                     nph = s["bbox"]
         if nph:
             x0, y0, x1, y1 = nph
-            _cover(x0 - 60, y0, x1 + 60, y1, pad=2)
-            cur = y0
+            _cover(x0 - 80, y0 - 2, x1 + 80, y1 + 2, pad=2)
+            # 반코드(윗줄) — placeholder 위치
             if student_class:
-                csz = 14.0
-                _centered(nf_r, student_class, 0, pw, cur + csz, csz)
-                cur += csz * 1.4
-            nsz = _fit(nf_b, english_name, pw * 0.80, 34.0)
-            _centered(nf_b, english_name, 0, pw, cur + nsz, nsz)
+                _centered(nf_r, student_class, 0, pw, y0 + 22, 24.0)
+            # 이름(아랫줄) — 원본처럼 가장 큰 요소로 (제목 다음으로 지배적)
+            nsz = _fit(nf_b, english_name, pw * 0.80, 58.0, minsz=28.0)
+            name_baseline = y1 + 56
+            _centered(nf_b, english_name, 0, pw, name_baseline, nsz)
+            # 이름 밑 얇은 회색 구분선 (원본처럼 넓게, 아래로)
+            nw = nf_b.text_length(english_name, fontsize=nsz)
+            half = max(nw / 2 + 50, 290)
+            cx, dy = pw / 2, name_baseline + 20
+            page.draw_line(fitz.Point(cx - half, dy), fitz.Point(cx + half, dy),
+                           color=(0.55, 0.55, 0.55), width=0.8)
         # 월 줄 전체 재작성: "During the month of {month} {year}"
         for s in spans:
             if "month of" in s["text"].lower() and "_" in s["text"]:
