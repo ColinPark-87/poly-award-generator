@@ -507,17 +507,17 @@ def _inject_bundang_text_pdf(
         if nph:
             x0, y0, x1, y1 = nph
             _cover(x0 - 80, y0 - 2, x1 + 80, y1 + 2, pad=2)
-            # 반코드(윗줄) — placeholder 위치
+            # 반코드(윗줄) — placeholder 위치, 원본 비율(높이≈0.03)
             if student_class:
-                _centered(nf_r, student_class, 0, pw, y0 + 22, 24.0)
-            # 이름(아랫줄) — 원본처럼 가장 큰 요소로 (제목 다음으로 지배적)
-            nsz = _fit(nf_b, english_name, pw * 0.80, 58.0, minsz=28.0)
-            name_baseline = y1 + 56
+                _centered(nf_r, student_class, 0, pw, y0 + 26, 28.0)
+            # 이름(아랫줄) — 원본처럼 크게(높이≈0.082) + 아래로(베이스라인≈0.755)
+            nsz = _fit(nf_b, english_name, pw * 0.82, 68.0, minsz=36.0)
+            name_baseline = y1 + 78
             _centered(nf_b, english_name, 0, pw, name_baseline, nsz)
-            # 이름 밑 얇은 회색 구분선 (원본처럼 넓게, 아래로)
+            # 이름 밑 얇은 회색 구분선 (원본처럼 넓게, 이름 바로 아래)
             nw = nf_b.text_length(english_name, fontsize=nsz)
             half = max(nw / 2 + 50, 290)
-            cx, dy = pw / 2, name_baseline + 20
+            cx, dy = pw / 2, name_baseline + 12
             page.draw_line(fitz.Point(cx - half, dy), fitz.Point(cx + half, dy),
                            color=(0.55, 0.55, 0.55), width=0.8)
         # 월 줄 전체 재작성: "During the month of {month} {year}"
