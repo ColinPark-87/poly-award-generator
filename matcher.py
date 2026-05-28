@@ -314,61 +314,86 @@ def _bd_norm(v: Any) -> str:
     return (str(v).replace("\n", " ").strip() if v is not None else "")
 
 
+def _bd_em_col(colmap: dict[str, int]):
+    """헤더에서 Eng. Mechanics 컬럼 인덱스 (공백·마침표 무시: 'Eng. Mechanics'='Eng.Mechanics')."""
+    for name, j in colmap.items():
+        if name.replace(" ", "").replace(".", "").lower() == "engmechanics":
+            return j
+    return None
+
+
 def load_bundang_level_top(file_path: str) -> list[dict[str, Any]]:
-    """초등TOP + 중등TOP 시트에서 Level TOP == 1 학생 → Level Top 상장 명단.
-    시트는 레벨 그룹마다 헤더가 반복되는 블록 구조."""
+    """Level TOP == 1 학생 → Level Top 상장 명단.
+    구버전(초등TOP+중등TOP 블록 반복) / 신버전(성적우수자 단일 시트) 모두 대응.
+    헤더는 '학생이름'+('Level TOP' 또는 '학급명') 포함 행으로 감지."""
     wb = openpyxl.load_workbook(file_path, data_only=True)
     out: list[dict[str, Any]] = []
-    for sn in ("초등TOP", "중등TOP"):
+    seen: set[tuple[str, str]] = set()
+    for sn in ("성적우수자", "초등TOP", "중등TOP"):
         if sn not in wb.sheetnames:
             continue
         ws = wb[sn]
         colmap: dict[str, int] | None = None
         for row in ws.iter_rows(values_only=True):
             cells = [_bd_norm(c) for c in row]
-            if "학급명" in cells:
+            if "학생이름" in cells and ("Level TOP" in cells or "학급명" in cells):
                 colmap = {name: i for i, name in enumerate(cells) if name}
                 continue
             if not colmap:
                 continue
-            ci = colmap.get("학급명")
-            if ci is None or ci >= len(cells) or not cells[ci]:
+            ci = colmap.get("학급명", colmap.get("학급"))
+            lt = colmap.get("Level TOP")
+            ni = colmap.get("학생이름")
+            if ci is None or lt is None or ni is None:
                 continue
 
-            def _g(key: str) -> str:
-                i = colmap.get(key)
+            def _g(i) -> str:
                 return cells[i] if i is not None and i < len(cells) else ""
 
-            if _g("Level TOP") == "1":
-                kor, eng = parse_student_name(_g("학생이름"))
+            if _g(ci) and _g(lt) == "1":
+                full = _g(ni).strip()
+                key = (_g(ci).strip(), full)
+                if key in seen:
+                    continue
+                seen.add(key)
+                kor, eng = parse_student_name(full)
                 out.append({
-                    "class":        _g("학급명").strip(),
+                    "class":        _g(ci).strip(),
                     "korean_name":  kor,
                     "english_name": eng,
-                    "full_name":    _g("학생이름").strip(),
+                    "full_name":    full,
                 })
     return out
 
 
 def load_bundang_grammar(file_path: str) -> list[dict[str, Any]]:
-    """종합성적관리 시트에서 Eng. Mechanics 만점(컬럼 최댓값) 학생 → Grammar 상장 명단."""
+    """Eng. Mechanics 만점(컬럼 최댓값) 학생 → Grammar 상장 명단.
+    신버전(종합명단) / 구버전(종합성적관리) 전체 명단 시트 모두 대응."""
     wb = openpyxl.load_workbook(file_path, data_only=True)
-    if "종합성적관리" not in wb.sheetnames:
+    sheet = next((sn for sn in ("종합명단", "종합성적관리") if sn in wb.sheetnames), None)
+    if sheet is None:
         return []
-    ws = wb["종합성적관리"]
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
+    rows = list(wb[sheet].iter_rows(values_only=True))
+
+    # 헤더 행 감지: '학생이름' 포함 첫 행
+    hdr_i = colmap = None
+    for i, row in enumerate(rows):
+        cells = [_bd_norm(c) for c in row]
+        if "학생이름" in cells:
+            hdr_i = i
+            colmap = {name: j for j, name in enumerate(cells) if name}
+            break
+    if colmap is None:
         return []
-    hdr = [_bd_norm(c) for c in rows[0]]
-    colmap = {name: i for i, name in enumerate(hdr) if name}
-    ci = colmap.get("학급", colmap.get("학급명"))
+
     ni = colmap.get("학생이름")
-    ei = colmap.get("Eng. Mechanics")
+    ci = colmap.get("학급명", colmap.get("학급"))
+    ei = _bd_em_col(colmap)
     if ni is None or ei is None:
         return []
 
     recs: list[tuple[str, str, float]] = []
-    for row in rows[1:]:
+    for row in rows[hdr_i + 1:]:
         cells = [_bd_norm(c) for c in row]
         if ei >= len(cells) or not cells[ei]:
             continue
