@@ -309,6 +309,94 @@ def _get_level(cls: str) -> str:
     return m.group(1) if m else ""
 
 
+# ── 분당엠폴리 ─────────────────────────────────────────────
+def _bd_norm(v: Any) -> str:
+    return (str(v).replace("\n", " ").strip() if v is not None else "")
+
+
+def load_bundang_level_top(file_path: str) -> list[dict[str, Any]]:
+    """초등TOP + 중등TOP 시트에서 Level TOP == 1 학생 → Level Top 상장 명단.
+    시트는 레벨 그룹마다 헤더가 반복되는 블록 구조."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    out: list[dict[str, Any]] = []
+    for sn in ("초등TOP", "중등TOP"):
+        if sn not in wb.sheetnames:
+            continue
+        ws = wb[sn]
+        colmap: dict[str, int] | None = None
+        for row in ws.iter_rows(values_only=True):
+            cells = [_bd_norm(c) for c in row]
+            if "학급명" in cells:
+                colmap = {name: i for i, name in enumerate(cells) if name}
+                continue
+            if not colmap:
+                continue
+            ci = colmap.get("학급명")
+            if ci is None or ci >= len(cells) or not cells[ci]:
+                continue
+
+            def _g(key: str) -> str:
+                i = colmap.get(key)
+                return cells[i] if i is not None and i < len(cells) else ""
+
+            if _g("Level TOP") == "1":
+                kor, eng = parse_student_name(_g("학생이름"))
+                out.append({
+                    "class":        _g("학급명").strip(),
+                    "korean_name":  kor,
+                    "english_name": eng,
+                    "full_name":    _g("학생이름").strip(),
+                })
+    return out
+
+
+def load_bundang_grammar(file_path: str) -> list[dict[str, Any]]:
+    """종합성적관리 시트에서 Eng. Mechanics 만점(컬럼 최댓값) 학생 → Grammar 상장 명단."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    if "종합성적관리" not in wb.sheetnames:
+        return []
+    ws = wb["종합성적관리"]
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+    hdr = [_bd_norm(c) for c in rows[0]]
+    colmap = {name: i for i, name in enumerate(hdr) if name}
+    ci = colmap.get("학급", colmap.get("학급명"))
+    ni = colmap.get("학생이름")
+    ei = colmap.get("Eng. Mechanics")
+    if ni is None or ei is None:
+        return []
+
+    recs: list[tuple[str, str, float]] = []
+    for row in rows[1:]:
+        cells = [_bd_norm(c) for c in row]
+        if ei >= len(cells) or not cells[ei]:
+            continue
+        try:
+            em = float(cells[ei])
+        except ValueError:
+            continue
+        cls  = cells[ci] if ci is not None and ci < len(cells) else ""
+        name = cells[ni] if ni < len(cells) else ""
+        if name:
+            recs.append((cls.strip(), name.strip(), em))
+    if not recs:
+        return []
+
+    max_em = max(r[2] for r in recs)
+    out: list[dict[str, Any]] = []
+    for cls, full_name, em in recs:
+        if em == max_em:
+            kor, eng = parse_student_name(full_name)
+            out.append({
+                "class":        cls,
+                "korean_name":  kor,
+                "english_name": eng,
+                "full_name":    full_name,
+            })
+    return out
+
+
 def select_winners(
     rows: list[dict[str, Any]],
     perfect_score_min: float = 100.0,

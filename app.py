@@ -191,6 +191,99 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
                 st.warning("템플릿 파일 없음")
 
 # ══════════════════════════════════════════════════════════
+# 분당엠폴리 전용 흐름 (Level Top + Grammar)
+# ══════════════════════════════════════════════════════════
+if campus == "분당엠폴리":
+    from matcher import load_bundang_level_top, load_bundang_grammar
+
+    poly_section(
+        "01 · 명단 업로드",
+        "분당엠폴리 종합 엑셀 1개를 업로드하세요. "
+        "Level Top 상장은 초등TOP·중등TOP 시트의 Level TOP=1 학생, "
+        "Grammar 상장은 종합성적관리 시트의 Eng. Mechanics 만점자에게 발급됩니다.",
+    )
+    _bd_default_month = f"{_dt.date(2026, _dt.date.today().month, 1):%B} 2026"
+    _bd_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_month")
+    _bd_file  = st.file_uploader("엑셀 업로드 (.xlsx)", type=["xlsx"], key="bd_excel")
+
+    if st.button("상장 생성", key="bd_gen", type="primary") and _bd_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+            _tmp.write(_bd_file.read())
+            _bd_path = _tmp.name
+        try:
+            lvl_list  = load_bundang_level_top(_bd_path)
+            gram_list = load_bundang_grammar(_bd_path)
+        finally:
+            os.unlink(_bd_path)
+
+        _bd_generated = []   # (award_type, folder, filename, pdf_bytes, student)
+        _bd_errors    = []
+        with st.spinner(f"상장 생성 중... (Level Top {len(lvl_list)} + Grammar {len(gram_list)})"):
+            with tempfile.TemporaryDirectory() as _td:
+                _bd_jobs = [
+                    ("certificate_of_achievement", "Level_Top", lvl_list, "english_name"),
+                    ("grammar_certification",      "Grammar",   gram_list, "full_name"),
+                ]
+                for _at, _folder, _students, _name_key in _bd_jobs:
+                    _tmpl = cfg.get_template_path(campus, _at)
+                    for _s in _students:
+                        _safe = f"{_s['english_name'].replace(' ', '_')}_{_s['class'].replace('/', '-')}"
+                        _fn   = f"{_safe}.pdf"
+                        _out  = os.path.join(_td, _fn)
+                        try:
+                            build_certificate(
+                                award_type=_at,
+                                english_name=_s[_name_key],
+                                student_class=_s["class"],
+                                month=_bd_month,
+                                output_path=_out,
+                                template_override=_tmpl,
+                                campus=campus,
+                            )
+                            with open(_out, "rb") as _f:
+                                _bd_generated.append((_at, _folder, _fn, _f.read(), _s))
+                        except Exception as _e:
+                            _bd_errors.append(f"{_s['full_name']}: {_e}")
+
+        _bd_zip = io.BytesIO()
+        with zipfile.ZipFile(_bd_zip, "w", zipfile.ZIP_DEFLATED) as _zf:
+            for _, _folder, _fn, _bytes, _ in _bd_generated:
+                _zf.writestr(f"{_folder}/{_fn}", _bytes)
+
+        st.session_state["bd_result"] = {
+            "lvl": lvl_list, "gram": gram_list,
+            "generated": _bd_generated, "errors": _bd_errors,
+            "month": _bd_month,
+            "zip_bytes": _bd_zip.getvalue(),
+            "zip_name": f"분당엠폴리_{_bd_month.replace(' ', '_')}_상장.zip",
+        }
+
+    if "bd_result" in st.session_state:
+        _r = st.session_state["bd_result"]
+        if _r["errors"]:
+            st.warning("일부 생성 실패:\n" + "\n".join(_r["errors"]))
+        st.success(f"총 {len(_r['generated'])}개 생성 "
+                   f"(Level Top {len(_r['lvl'])} · Grammar {len(_r['gram'])})")
+
+        poly_section("02 · 다운로드", "전체 ZIP 또는 개별 PDF를 받을 수 있습니다.")
+        st.download_button("📦 전체 ZIP 다운로드", _r["zip_bytes"],
+                           file_name=_r["zip_name"], mime="application/zip", key="bd_zip_dl")
+
+        for _at, _title in [("certificate_of_achievement", "Level Top 상장"),
+                            ("grammar_certification",      "Grammar 상장")]:
+            _items = [g for g in _r["generated"] if g[0] == _at]
+            with st.expander(f"{_title} ({len(_items)}명)", expanded=False):
+                for _i, (_, _folder, _fn, _bytes, _s) in enumerate(_items):
+                    _c1, _c2 = st.columns([3, 1])
+                    _c1.write(f"{_s['class']}  ·  {_s['full_name']}")
+                    _c2.download_button("PDF", _bytes, file_name=_fn,
+                                        mime="application/pdf", key=f"bd_dl_{_at}_{_i}")
+
+    poly_footer()
+    st.stop()
+
+
+# ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
 _use_sr = (campus != _JUNGBAL_CAMPUS)   # 정발은 Best SR 미사용
