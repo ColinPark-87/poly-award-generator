@@ -9,7 +9,8 @@ import streamlit as st
 from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners,
                      select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS,
-                     load_sr_from_excel_yuseong)
+                     load_sr_from_excel_yuseong,
+                     load_bundang_level_top, load_bundang_grammar)
 from generator import build_certificate, pdf_to_preview_png
 import config as cfg
 
@@ -194,8 +195,6 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
 # 분당엠폴리 전용 흐름 (Level Top + Grammar)
 # ══════════════════════════════════════════════════════════
 if campus == "분당엠폴리":
-    from matcher import load_bundang_level_top, load_bundang_grammar
-
     poly_section(
         "01 · 명단 업로드",
         "분당엠폴리 종합 엑셀 1개를 업로드하세요. "
