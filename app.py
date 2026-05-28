@@ -3,15 +3,15 @@ import io
 import re
 import zipfile
 import tempfile
+import importlib
 import requests
 import pandas as pd
 import streamlit as st
+import matcher
 from matcher import (load_rows_from_excel, extract_month_from_filename,
                      select_winners, load_sr_from_csv, select_sr_winners,
                      select_jungbal_winners, JUNGBAL_DEFAULT_WEIGHTS,
-                     load_sr_from_excel_yuseong,
-                     load_bundang_level_top, load_bundang_grammar,
-                     load_bundang_best_br)
+                     load_sr_from_excel_yuseong)
 from generator import build_certificate, pdf_to_preview_png
 import config as cfg
 
@@ -196,6 +196,13 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
 # 분당엠폴리 전용 흐름 (Level Top + Grammar)
 # ══════════════════════════════════════════════════════════
 if campus == "분당엠폴리":
+    # Streamlit Cloud가 옛 matcher 모듈을 캐시한 경우(새 함수 누락) 디스크에서 강제 재로딩
+    if not hasattr(matcher, "load_bundang_best_br"):
+        importlib.reload(matcher)
+    load_bundang_level_top = matcher.load_bundang_level_top
+    load_bundang_grammar   = matcher.load_bundang_grammar
+    load_bundang_best_br   = matcher.load_bundang_best_br
+
     poly_section(
         "01 · 명단 업로드",
         "① MT 종합 엑셀 → Level Top(초등·중등TOP의 Level TOP=1) + Grammar(종합명단 Eng.Mechanics 만점). "
