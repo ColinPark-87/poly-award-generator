@@ -28,6 +28,14 @@ def _sort_key(s: dict) -> tuple:
 def _sr_sort_key(s: dict) -> str:
     return s["class"]
 
+# ── 상장 PDF 파일명: 반이름_한국이름(영어이름).pdf ─────────────
+def _cert_filename(english_name: str, student_class: str, korean_name: str = "") -> str:
+    safe_class = str(student_class).strip().replace(" ", "_").replace("/", "-")
+    safe_eng   = str(english_name).strip().replace(" ", "_")
+    kor        = str(korean_name or "").strip()
+    base = f"{safe_class}_{kor}({safe_eng})" if kor else f"{safe_class}_{safe_eng}"
+    return f"{base}.pdf"
+
 # ── 폰트 자동 다운로드 ──────────────────────────────────────
 def _ensure_fonts():
     font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
@@ -226,8 +234,7 @@ if campus == "분당엠폴리":
                 for _at, _folder, _students, _name_key in specs:
                     _tmpl = cfg.get_template_path(campus, _at)
                     for _s in _students:
-                        _safe = f"{_s['english_name'].replace(' ', '_')}_{_s['class'].replace('/', '-')}"
-                        _fn   = f"{_safe}.pdf"
+                        _fn   = _cert_filename(_s.get("english_name", _s[_name_key]), _s["class"], _s.get("korean_name"))
                         _out  = os.path.join(_td, _fn)
                         try:
                             build_certificate(
@@ -541,9 +548,7 @@ if _btn_generate:
                         ("monthly_test_winner",     "Monthly_Test_Winner",     jb_mw,  True),
                     ]:
                         for s in student_list:
-                            safe_name  = s["english_name"].replace(" ", "_")
-                            safe_class = s["class"].replace(" ", "_").replace("/", "-")
-                            filename   = f"{safe_name}_{safe_class}.pdf"
+                            filename   = _cert_filename(s["english_name"], s["class"], s.get("korean_name"))
                             out_path   = os.path.join(tmpdir, filename)
                             try:
                                 build_certificate(
@@ -569,9 +574,7 @@ if _btn_generate:
                         if award_type not in _award_labels:
                             continue
                         for s in student_list:
-                            safe_name  = s["english_name"].replace(" ", "_")
-                            safe_class = s["class"].replace(" ", "_").replace("/", "-")
-                            filename   = f"{safe_name}_{safe_class}.pdf"
+                            filename   = _cert_filename(s["english_name"], s["class"], s.get("korean_name"))
                             out_path   = os.path.join(tmpdir, filename)
                             try:
                                 build_certificate(
@@ -608,9 +611,7 @@ if _btn_generate:
         with st.spinner("Best SR 상장 PDF 생성 중..."):
             with tempfile.TemporaryDirectory() as tmpdir:
                 for s in sr_list:
-                    safe_name  = s["english_name"].replace(" ", "_")
-                    safe_class = s["class"].replace(" ", "_").replace("/", "-")
-                    filename   = f"{safe_name}_{safe_class}.pdf"
+                    filename   = _cert_filename(s["english_name"], s["class"], s.get("korean_name"))
                     out_path   = os.path.join(tmpdir, filename)
                     try:
                         build_certificate(
@@ -897,8 +898,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 if _btn_manual:
     try:
         with tempfile.TemporaryDirectory() as _tmpdir:
-            _safe = _manual_name.strip().replace(" ", "_")
-            _fn   = f"{_safe}_{_manual_class.strip().replace(' ','_')}.pdf"
+            _fn   = _cert_filename(_manual_name.strip(), _manual_class.strip())
             _out  = os.path.join(_tmpdir, _fn)
             build_certificate(
                 award_type        = _manual_award,
