@@ -36,6 +36,16 @@ def get_campus_cfg(campus: str) -> dict:
     """캠퍼스 설정 반환. 없으면 기본값."""
     return load_campus_config().get(campus, _DEFAULT_CAMPUS_CFG)
 
+def set_campus_director(campus: str, name: str) -> None:
+    """캠퍼스 원장 사인 이름을 campus_config.json 에 저장(영구).
+    파일에 캠퍼스가 없으면 기본 설정으로 만들어 director 만 갱신."""
+    data = load_campus_config()
+    if campus not in data:
+        data[campus] = json.loads(json.dumps(_DEFAULT_CAMPUS_CFG))
+    data[campus]["director"] = name.strip()
+    with open(_CAMPUS_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 def get_template_path(campus: str, award_type: str) -> str:
     """캠퍼스별 템플릿 경로. 없으면 기본 templates/ 폴더 사용."""
     campus_path = os.path.join(TEMPLATE_DIR, campus, f"{award_type}.pdf")
@@ -45,6 +55,14 @@ def get_template_path(campus: str, award_type: str) -> str:
 
 # PDF → PNG 변환 해상도 (200 DPI → 2340×1655 px)
 DPI = 200
+
+# ── 원장 사인 (기본 템플릿 캠퍼스: 중계 등) ──────────────────
+# 템플릿에 벡터 텍스트로 박힌 원장 이름(기본 "Colin Park").
+# campus_config.json의 캠퍼스별 "director" 값이 이와 다르면, 렌더 시
+# 해당 텍스트를 배경색으로 덮고 새 이름을 손글씨체로 다시 그린다.
+# 기본값과 같으면(=Colin Park) 원본 템플릿(HolidayRegular)을 그대로 사용.
+SIGNATURE_DEFAULT_NAME = "Colin Park"
+SIGNATURE_FONT         = "DancingScript-Bold.ttf"   # HolidayRegular와 가장 유사한 보유 손글씨체
 
 # ── 이름 좌표 (상장별로 타이틀 높이가 달라 Y 값 분리) ──────────
 # 이미지 크기: 2340 × 1655
@@ -150,6 +168,8 @@ VOCA_PAGE_H = 642
 # 월(예: APRIL): 작성본 측정 밴드 y85~139 중앙. baseline=캡 하단, 중앙 정렬.
 VOCA_MONTH_BASELINE = 138.0
 VOCA_MONTH_SIZE     = 82.0        # 캘리브레이션: 캡높이 ≈ 55px (작성본 APRIL y85~139와 일치)
+# 템플릿에 박힌 기본 월("April")을 덮는 흰 사각형 (타이틀 배경=흰색, VOCA KING은 y178+이라 안전)
+VOCA_MONTH_COVER    = (286.0, 78.0, 568.0, 150.0)
 VOCA_MONTH_MAX_W    = 560.0       # VOCA KING 폭(218~632≈414)보다 약간 넓게 허용
 # 이름(예: 5HO1_1 이소윤 (Alice Lee)): 이름선 y≈402 바로 위. baseline=선 위 ~12px.
 VOCA_NAME_BASELINE  = 382.0

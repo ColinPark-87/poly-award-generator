@@ -477,6 +477,10 @@ def _inject_bundang_text_pdf(
         # 지울 가상선/덮을 영역 없음(월 점선 없는 블랭크). 월·이름만 고정좌표 벡터로 올린다.
         af  = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.BUNDANG_VOCA_TITLE_FONT))
         vtw = fitz.TextWriter(page.rect, color=config.VOCA_TEXT_COLOR)
+        # 템플릿에 박힌 기본 월("April")을 흰색으로 덮음(타이틀 배경=흰색 → 이음새 없음).
+        # 그래야 다른 월을 넣어도 "April" 잔상이 안 남음.
+        _cx0, _cy0, _cx1, _cy1 = config.VOCA_MONTH_COVER
+        page.draw_rect(fitz.Rect(_cx0, _cy0, _cx1, _cy1), color=None, fill=(1, 1, 1))
         # 월: Algerian(=VOCA KING과 동일 서체), 상단 중앙. 'April' Title-case로 소형대문자 스타일 일치.
         month_title = month_name.strip().capitalize()
         msz = _fit(af, month_title, config.VOCA_MONTH_MAX_W, config.VOCA_MONTH_SIZE, minsz=20.0)
@@ -864,6 +868,79 @@ def _render_yuseong(
             draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
 
 
+def _inject_director_signature(template_path: str, director_name: str) -> bytes | None:
+    """기본 템플릿(중계 등)의 박힌 원장 이름('Colin Park')을 배경색으로 덮고
+    설정된 이름을 손글씨체로 다시 그린다. 직함('Director')·서명선은 그대로.
+    원본 이름 텍스트를 못 찾으면 None 반환(원본 그대로 사용).
+    좌표·폰트·색은 템플릿에서 자동 추출 → 4개 상장(perfect/honor/bw/sr) 공통 대응."""
+    doc  = fitz.open(template_path)
+    page = doc[0]
+
+    # 'Colin Park' 텍스트 span 자동 탐지 (한 span '...Colin Park...')
+    target = None
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] != 0:
+            continue
+        for l in b["lines"]:
+            for s in l["spans"]:
+                if "Colin" in s["text"] or "Park" in s["text"]:
+                    target = s
+                    break
+            if target:
+                break
+        if target:
+            break
+    if target is None:
+        doc.close()
+        return None
+
+    bbox   = fitz.Rect(target["bbox"])
+    origin = target["origin"]          # (x, baseline_y)
+    color  = target["color"]
+    rgb    = (((color >> 16) & 255) / 255.0, ((color >> 8) & 255) / 255.0, (color & 255) / 255.0)
+
+    # 배경색 샘플링: 텍스트 한참 위쪽 띠(어센더 넘침과도 안 겹치는 깨끗한 크림/흰 영역) 평균
+    pix = page.get_pixmap(clip=fitz.Rect(bbox.x0, bbox.y0 - 30, bbox.x1, bbox.y0 - 20))
+    if pix.samples and pix.width * pix.height:
+        n = pix.n
+        data = pix.samples
+        rs = gs = bs = cnt = 0
+        for i in range(0, len(data), n):
+            rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; cnt += 1
+        bg = (rs / cnt / 255.0, gs / cnt / 255.0, bs / cnt / 255.0) if cnt else (1, 1, 1)
+    else:
+        bg = (1, 1, 1)
+
+    # 박힌 이름 제거(배경색으로 채움). 하단은 베이스라인 기준으로 제한 → 바로 아래 서명선 보존
+    # (이름엔 디센더 없음: 'Colin Park' → baseline+3까지면 글자 잉크 완전 제거, 선 미접촉)
+    cover_bottom = origin[1] + 3
+    # 테두리 없는 채움 사각형으로 박힌 이름을 덮음(redaction은 주석 테두리 잔흔 → draw_rect 사용).
+    # 하단은 베이스라인 기준(서명선 보존), 상단·좌우는 손글씨 어센더 넘침까지 여유 있게.
+    page.draw_rect(fitz.Rect(bbox.x0 - 14, bbox.y0 - 16, bbox.x1 + 14, cover_bottom),
+                   color=None, fill=bg)
+
+    # 새 이름 그리기 (손글씨체, 같은 베이스라인·중앙, 서명선 폭에 맞춰 축소)
+    font = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.SIGNATURE_FONT))
+    name = director_name.strip()
+    max_w = bbox.width * 1.25
+    fs    = float(target["size"]) * 1.1          # 손글씨체는 자간이 좁아 약간 키움
+    while fs > 10 and font.text_length(name, fontsize=fs) > max_w:
+        fs -= 0.5
+    nw  = font.text_length(name, fontsize=fs)
+    cx  = (bbox.x0 + bbox.x1) / 2
+    tw  = fitz.TextWriter(page.rect, color=rgb)
+    tw.append(fitz.Point(cx - nw / 2, origin[1]), name, font=font, fontsize=fs)
+    tw.write_text(page)
+
+    try:
+        doc.subset_fonts()
+    except Exception:
+        pass
+    out = doc.tobytes(garbage=4, deflate=True)
+    doc.close()
+    return out
+
+
 def build_certificate(
     award_type:        str,
     english_name:      str,
@@ -907,7 +984,21 @@ def build_certificate(
         img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
         _doc.close()
     else:
-        img = _pdf_page_to_pil(template_path, 0)
+        # 기본 템플릿 캠퍼스(중계 등): campus_config의 director가 기본("Colin Park")과 다르면
+        # 박힌 사인 이름을 교체해 래스터라이즈. (유성은 자체 템플릿이라 제외)
+        _director = (config.get_campus_cfg(campus).get("director") if campus else None)
+        _sig_bytes = None
+        if (not is_yuseong and _director
+                and _director.strip()
+                and _director.strip() != config.SIGNATURE_DEFAULT_NAME):
+            _sig_bytes = _inject_director_signature(template_path, _director.strip())
+        if _sig_bytes:
+            _sdoc = fitz.open(stream=_sig_bytes, filetype="pdf")
+            _spix = _sdoc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
+            img   = Image.frombytes("RGB", [_spix.width, _spix.height], _spix.samples)
+            _sdoc.close()
+        else:
+            img = _pdf_page_to_pil(template_path, 0)
 
     draw = ImageDraw.Draw(img)
     w    = img.width

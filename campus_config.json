@@ -2,7 +2,13 @@
   "중계": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
+    "director": "Colin Park",
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -13,7 +19,12 @@
   "광명": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -24,7 +35,12 @@
   "일산": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -35,7 +51,12 @@
   "목동": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -46,7 +67,12 @@
   "목동매그넷": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -57,7 +83,12 @@
   "유성": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "perfect_score": "Perfect Score",
       "honor_roll": "Honor Roll",
@@ -67,7 +98,12 @@
   "정발": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "score_weights": {
       "english": 1.0,
       "speech": 1.0,
@@ -84,7 +120,12 @@
   "분당엠폴리": {
     "perfect_score_min": 100.0,
     "honor_roll_min": 95.0,
-    "bw_min_lc": {"GT": 27, "MGT": 27, "S": 27, "MAG": 27},
+    "bw_min_lc": {
+      "GT": 27,
+      "MGT": 27,
+      "S": 27,
+      "MAG": 27
+    },
     "award_labels": {
       "grammar_certification": "Grammar Certification",
       "certificate_of_achievement": "Certificate of Achievement",

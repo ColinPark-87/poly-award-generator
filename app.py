@@ -169,6 +169,36 @@ poly_campus_banner(campus, term=f"{_dt.date.today().year}년 {_dt.date.today().m
 _campus_cfg = cfg.get_campus_cfg(campus)
 _bw_def     = _campus_cfg["bw_min_lc"]
 
+# ── 원장 사인 설정 (기본 템플릿 캠퍼스: 중계 등) ──────────────
+# 사인의 원장 '이름'만 변경. 직함('Director')·서명선·수상 로직 등 다른 조건은 그대로.
+if campus not in (_JUNGBAL_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴리"):
+    with st.expander("⚙️ 원장 사인 설정 (사인 이름만 변경 · 다른 조건 유지)", expanded=False):
+        _cur_dir = _campus_cfg.get("director", cfg.SIGNATURE_DEFAULT_NAME)
+        _dcol, _pcol = st.columns([1, 1])
+        with _dcol:
+            _new_dir = st.text_input("원장 이름 (사인에 표시)", value=_cur_dir, key=f"dir_{campus}")
+            st.caption(f"손글씨체({cfg.SIGNATURE_FONT.replace('.ttf','')})로 표시 · 직함 'Director'·서명선 고정. "
+                       f"기본값 '{cfg.SIGNATURE_DEFAULT_NAME}'이면 원본 사인 그대로 사용.")
+            if st.button("저장", key=f"dir_save_{campus}", type="primary"):
+                cfg.set_campus_director(campus, _new_dir.strip())
+                st.success(f"저장 완료 — {campus} 원장 사인: {_new_dir.strip() or cfg.SIGNATURE_DEFAULT_NAME}. "
+                           "지금부터 생성되는 상장에 반영됩니다.")
+                st.rerun()
+        with _pcol:
+            try:
+                _ptmpl = cfg.get_template_path(campus, "perfect_score")
+                _nm = _new_dir.strip()
+                if _nm and _nm != cfg.SIGNATURE_DEFAULT_NAME:
+                    _sig_pdf = generator._inject_director_signature(_ptmpl, _nm)
+                else:
+                    with open(_ptmpl, "rb") as _f:
+                        _sig_pdf = _f.read()
+                if _sig_pdf:
+                    st.image(pdf_to_preview_png(_sig_pdf, preview_width=440),
+                             caption="사인 미리보기 (Perfect Score)", use_container_width=True)
+            except Exception as _e:
+                st.caption(f"미리보기를 표시할 수 없습니다: {_e}")
+
 # ══════════════════════════════════════════════════════════
 # 상장 템플릿 확인
 # ══════════════════════════════════════════════════════════
