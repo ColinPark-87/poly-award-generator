@@ -357,10 +357,13 @@ def load_bundang_level_top(file_path: str) -> list[dict[str, Any]]:
                     continue
                 seen.add(key)
                 kor, eng = parse_student_name(full)
+                # Level Top 상장 이름선 표기: 한국이름(영어이름) — 영문이름 없으면 한국이름만
+                display = f"{kor}({eng})" if eng and eng != kor else kor
                 out.append({
                     "class":        _g(ci).strip(),
                     "korean_name":  kor,
                     "english_name": eng,
+                    "display_name": display,
                     "full_name":    full,
                 })
     return out

@@ -331,7 +331,7 @@ if campus == "분당엠폴리":
             _gram = load_bundang_grammar(_p)
         finally:
             os.unlink(_p)
-        _bd_run([("certificate_of_achievement", "Level_Top", _lvl,  "english_name"),
+        _bd_run([("certificate_of_achievement", "Level_Top", _lvl,  "display_name"),
                  ("grammar_certification",      "Grammar",   _gram, "full_name")],
                 "bd_mt_result", "MT", _mt_month)
     _bd_render("bd_mt_result",
