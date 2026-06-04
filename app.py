@@ -205,12 +205,15 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
 # 분당엠폴리 전용 흐름 (Level Top + Grammar)
 # ══════════════════════════════════════════════════════════
 if campus == "분당엠폴리":
-    # Streamlit Cloud가 옛 모듈(matcher/generator)을 캐시한 경우 디스크에서 최신 재로딩
-    # (centering·월변수 등 generator.py 변경이 재배포 후에도 반영되도록 — 세션당 1회)
-    if not st.session_state.get("_bd_mods_fresh"):
+    # Streamlit Cloud가 옛 모듈(config/matcher/generator)을 캐시한 경우 디스크에서 최신 재로딩
+    # (BUNDANG_AWARD_TYPES·좌표 등 config 변경, centering·월변수 등 generator.py 변경이
+    #  핫리로드(같은 프로세스 재실행) 후에도 반영되도록 — 세션당 1회)
+    # config를 먼저 reload해야 generator의 is_bundang 판정에 voca_king 등 신규 타입이 반영됨.
+    if not st.session_state.get("_bd_mods_fresh3"):
+        importlib.reload(cfg)
         importlib.reload(matcher)
         importlib.reload(generator)
-        st.session_state["_bd_mods_fresh"] = True
+        st.session_state["_bd_mods_fresh3"] = True
     build_certificate      = generator.build_certificate
     pdf_to_preview_png     = generator.pdf_to_preview_png
     load_bundang_level_top = matcher.load_bundang_level_top
