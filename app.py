@@ -216,6 +216,7 @@ if campus == "분당엠폴리":
     load_bundang_level_top = matcher.load_bundang_level_top
     load_bundang_grammar   = matcher.load_bundang_grammar
     load_bundang_best_br   = matcher.load_bundang_best_br
+    load_bundang_voca_king = matcher.load_bundang_voca_king
 
     _BD_MONTHS = ["January", "February", "March", "April", "May", "June",
                   "July", "August", "September", "October", "November", "December"]
@@ -223,7 +224,8 @@ if campus == "분당엠폴리":
     _bd_default_month = f"{_BD_MONTHS[_bd_today.month - 1]} {_bd_today.year}"
     _BD_TITLES = {"certificate_of_achievement": "🥇 Level Top 상장",
                   "grammar_certification": "🏆 Grammar 상장",
-                  "best_book_reflection": "📖 Best BR 상장"}
+                  "best_book_reflection": "📖 Best BR 상장",
+                  "voca_king": "📚 Voca King 상장"}
 
     def _bd_run(specs, result_key, zip_tag, month):
         """specs: [(award_type, folder, [students], name_key)] → 생성·ZIP·세션 저장."""
@@ -354,6 +356,24 @@ if campus == "분당엠폴리":
         _bd_run([("best_book_reflection", "Best_BR", _br, "full_name")],
                 "bd_br_result", "BestBR", _br_month)
     _bd_render("bd_br_result", ["best_book_reflection"], "bd_br")
+
+    # ── 03 · Voca King 상장 ─────────────────────────────────
+    poly_section("03 · Voca King 상장",
+                 "Voca King 명단(.xlsx, '학급'+'이름' 헤더) 업로드 → 명단 전원에게 발급. "
+                 "아래 '월'이 상장 상단 제목(APRIL 등)에 반영됩니다.")
+    _vk_month = st.text_input("월 (예: April 2026)", value=_bd_default_month, key="bd_vk_month")
+    _vk_file = st.file_uploader("Voca King 명단 (.xlsx)", type=["xlsx"], key="bd_vk_excel")
+    if st.button("Voca King 상장 생성", key="bd_vk_gen", type="primary") and _vk_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+            _tmp.write(_vk_file.read())
+            _p = _tmp.name
+        try:
+            _vk = load_bundang_voca_king(_p)
+        finally:
+            os.unlink(_p)
+        _bd_run([("voca_king", "Voca_King", _vk, "full_name")],
+                "bd_vk_result", "VocaKing", _vk_month)
+    _bd_render("bd_vk_result", ["voca_king"], "bd_vk")
     poly_footer()
     st.stop()
 

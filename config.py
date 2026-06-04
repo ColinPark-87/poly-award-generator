@@ -136,6 +136,24 @@ DATE_LINE_Y_FALLBACK = 1295
 
 # ── 분당엠폴리 전용 ──────────────────────────────────────────
 BUNDANG_AWARD_TYPES = {"grammar_certification", "certificate_of_achievement",
-                       "best_book_reflection"}
+                       "best_book_reflection", "voca_king"}
 BUNDANG_KR_FONT      = "NanumGothic-Regular.ttf"   # 반코드·월·본문
 BUNDANG_KR_FONT_BOLD = "NanumGothic-Bold.ttf"      # 학생이름·제목 월
+
+# ── Voca King 전용 ───────────────────────────────────────────
+# 템플릿(templates/분당엠폴리/voca_king.pdf)은 미작성본2(854×642px)를 그대로 깐 래스터로,
+# "VOCA KING"·이름선·서명·디자인이 이미 박혀 있다. 변수(월·이름)만 벡터로 올린다.
+# 좌표는 템플릿 픽셀 = PDF 포인트 1:1 (page 854×642).
+BUNDANG_VOCA_TITLE_FONT = "Algerian.ttf"           # 상단 월 제목(=VOCA KING과 동일 서체)
+VOCA_PAGE_W = 854
+VOCA_PAGE_H = 642
+# 월(예: APRIL): 작성본 측정 밴드 y85~139 중앙. baseline=캡 하단, 중앙 정렬.
+VOCA_MONTH_BASELINE = 138.0
+VOCA_MONTH_SIZE     = 82.0        # 캘리브레이션: 캡높이 ≈ 55px (작성본 APRIL y85~139와 일치)
+VOCA_MONTH_MAX_W    = 560.0       # VOCA KING 폭(218~632≈414)보다 약간 넓게 허용
+# 이름(예: 5HO1_1 이소윤 (Alice Lee)): 이름선 y≈402 바로 위. baseline=선 위 ~12px.
+VOCA_NAME_BASELINE  = 382.0
+VOCA_NAME_SIZE      = 36.0
+VOCA_NAME_MIN       = 18.0
+VOCA_NAME_MAX_W     = 430.0       # 이름선 폭(209~644≈435)에 맞춰 넘치면 자동 축소
+VOCA_TEXT_COLOR     = (0, 0, 0)   # 작성본의 월·이름은 검정

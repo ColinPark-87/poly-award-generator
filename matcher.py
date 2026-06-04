@@ -467,6 +467,45 @@ def load_bundang_best_br(file_path: str) -> list[dict[str, Any]]:
     return out
 
 
+def load_bundang_voca_king(file_path: str) -> list[dict[str, Any]]:
+    """Voca King 명단 → 전원 발급. 시트 어디든 '학급'+'이름' 헤더 행을 찾아 파싱.
+    이름선 표기는 작성본과 동일하게 '반 한글이름 (영어이름)' (full_name 원형 그대로)."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for ws in wb.worksheets:
+        rows = list(ws.iter_rows(values_only=True))
+        hdr_i = ci = ni = None
+        for i, row in enumerate(rows):
+            cells = [_bd_norm(c) for c in row]
+            if "이름" in cells and ("학급" in cells or "학급명" in cells):
+                hdr_i = i
+                ni = cells.index("이름")
+                ci = cells.index("학급") if "학급" in cells else cells.index("학급명")
+                break
+        if hdr_i is None:
+            continue
+        for row in rows[hdr_i + 1:]:
+            cells = [_bd_norm(c) for c in row]
+            full = cells[ni].strip() if ni < len(cells) else ""
+            cls  = cells[ci].strip() if ci < len(cells) else ""
+            if not full or not cls:
+                continue
+            key = (cls, full)
+            if key in seen:
+                continue
+            seen.add(key)
+            kor, eng = parse_student_name(full)
+            out.append({
+                "class":        cls,
+                "korean_name":  kor,
+                "english_name": eng,
+                "full_name":    full,
+            })
+        break   # 첫 매칭 시트만 사용
+    return out
+
+
 def select_winners(
     rows: list[dict[str, Any]],
     perfect_score_min: float = 100.0,

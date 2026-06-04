@@ -472,6 +472,33 @@ def _inject_bundang_text_pdf(
                     return h
         return None
 
+    if award_type == "voca_king":
+        # 템플릿(voca_king.pdf)은 미작성본2 래스터 = "VOCA KING"·이름선·서명이 이미 박혀 있음.
+        # 지울 가상선/덮을 영역 없음(월 점선 없는 블랭크). 월·이름만 고정좌표 벡터로 올린다.
+        af  = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.BUNDANG_VOCA_TITLE_FONT))
+        vtw = fitz.TextWriter(page.rect, color=config.VOCA_TEXT_COLOR)
+        # 월: Algerian(=VOCA KING과 동일 서체), 상단 중앙. 'April' Title-case로 소형대문자 스타일 일치.
+        month_title = month_name.strip().capitalize()
+        msz = _fit(af, month_title, config.VOCA_MONTH_MAX_W, config.VOCA_MONTH_SIZE, minsz=20.0)
+        mw  = af.text_length(month_title, fontsize=msz)
+        vtw.append(fitz.Point((pw - mw) / 2, config.VOCA_MONTH_BASELINE),
+                   month_title, font=af, fontsize=msz)
+        # 이름: '반 한글이름 (영어이름)', NanumGothic, 이름선 바로 위 중앙. 길면 폭에 맞춰 축소.
+        name = f"{student_class} {english_name}".strip()
+        nsz  = _fit(nf_r, name, config.VOCA_NAME_MAX_W, config.VOCA_NAME_SIZE,
+                    minsz=config.VOCA_NAME_MIN)
+        nw   = nf_r.text_length(name, fontsize=nsz)
+        vtw.append(fitz.Point((pw - nw) / 2, config.VOCA_NAME_BASELINE),
+                   name, font=nf_r, fontsize=nsz)
+        vtw.write_text(page)
+        try:
+            doc.subset_fonts()
+        except Exception:
+            pass
+        out = doc.tobytes(garbage=4, deflate=True)
+        doc.close()
+        return out
+
     if award_type == "certificate_of_achievement":
         # 이름선(굵은 가로선) 감지 → 덮고 그 위에 "반 영문이름"
         nl = None
