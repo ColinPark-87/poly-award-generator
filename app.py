@@ -104,6 +104,7 @@ poly_header(
 # ── 캠퍼스 선택 ─────────────────────────────────────────
 _JUNGBAL_CAMPUS = "정발"   # 정발 전용 로직을 적용할 캠퍼스 이름
 _YUSEONG_CAMPUS = "유성"   # 유성 전용 SR Excel 로직
+_JUNGGYE_CAMPUS = "중계"   # MT/LT 업로드 분리 + LT 'Level Test' 문구 적용 캠퍼스
 
 if "campus_list" not in st.session_state:
     st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "유성", "정발", "분당엠폴리"]
@@ -164,6 +165,20 @@ if st.session_state.get("show_delete_input"):
 # 캠퍼스 배너
 import datetime as _dt
 poly_campus_banner(campus, term=f"{_dt.date.today().year}년 {_dt.date.today().month}월")
+
+# 중계: 핫리로드(같은 프로세스 재실행) 후에도 신규 generator(build_certificate test_label,
+# _apply_test_label)·matcher가 반영되도록 디스크에서 최신 재로딩 후 이름 재바인딩(세션 1회).
+if campus == _JUNGGYE_CAMPUS:
+    if not st.session_state.get("_jg_mods_fresh1"):
+        importlib.reload(cfg)
+        importlib.reload(matcher)
+        importlib.reload(generator)
+        st.session_state["_jg_mods_fresh1"] = True
+    build_certificate           = generator.build_certificate
+    pdf_to_preview_png          = generator.pdf_to_preview_png
+    select_winners              = matcher.select_winners
+    load_rows_from_excel        = matcher.load_rows_from_excel
+    extract_month_from_filename = matcher.extract_month_from_filename
 
 # 캠퍼스 설정 로드
 _campus_cfg = cfg.get_campus_cfg(campus)
@@ -424,28 +439,59 @@ if _use_sr:
 else:
     up_col1, up_col2 = st.columns([2, 1], gap="medium")
 
-with up_col1:
-    st.markdown('<div class="poly-drop"><b>성적 엑셀</b><span class="hint">&nbsp;·&nbsp;.xlsx&nbsp;·&nbsp;MT/LT 모두 가능, 여러 파일 동시 업로드</span></div>', unsafe_allow_html=True)
-    uploaded_excel_files = st.file_uploader(
-        "성적 엑셀 업로드 (.xlsx)", type=["xlsx"],
-        accept_multiple_files=True, key="excel_upload"
-    )
+_is_jg_split = (campus == _JUNGGYE_CAMPUS)   # 중계: MT/LT 업로드칸 분리
 
-# 하위 호환 — 기존 코드에서 uploaded_ele / uploaded_lx 를 참조하는 부분 대응
-uploaded_ele = uploaded_excel_files[0] if uploaded_excel_files else None
-uploaded_lx  = uploaded_excel_files[1] if len(uploaded_excel_files) > 1 else None
+# 기본값(비분리 캠퍼스에서도 항상 정의되도록)
+uploaded_mt = uploaded_lt = None
+mt_month = lt_month = ""
 
-# 월 감지: 파일명에서 순서대로 시도 → 없으면 직접 입력
-month = ""
-for _uf in uploaded_excel_files:
-    _m = extract_month_from_filename(_uf.name)
-    if _m:
-        month = _m
-        break
-if uploaded_excel_files and not month:
-    month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="", key="month_input")
-if month:
-    st.success(f"감지된 월: **{month}**")
+if _is_jg_split:
+    # ── 중계: MT 결과 엑셀 / LT 결과 엑셀 2칸 분리(각 1개) ──────────
+    with up_col1:
+        st.markdown('<div class="poly-drop"><b>MT 결과 엑셀</b><span class="hint">&nbsp;·&nbsp;.xlsx&nbsp;·&nbsp;월말고사(Monthly Test)</span></div>', unsafe_allow_html=True)
+        uploaded_mt = st.file_uploader("MT 결과 엑셀 (.xlsx)", type=["xlsx"], key="excel_mt")
+        st.markdown('<div class="poly-drop" style="margin-top:10px"><b>LT 결과 엑셀</b><span class="hint">&nbsp;·&nbsp;.xlsx&nbsp;·&nbsp;레벨테스트(Level Test)</span></div>', unsafe_allow_html=True)
+        uploaded_lt = st.file_uploader("LT 결과 엑셀 (.xlsx)", type=["xlsx"], key="excel_lt")
+
+    # 월 감지: 각 파일명에서 추출 → 없으면 직접 입력
+    if uploaded_mt:
+        mt_month = extract_month_from_filename(uploaded_mt.name) or \
+                   st.text_input("MT 월 직접 입력 (예: April 2026)", value="", key="mt_month_input")
+        if mt_month:
+            st.success(f"MT 월: **{mt_month}**")
+    if uploaded_lt:
+        lt_month = extract_month_from_filename(uploaded_lt.name) or \
+                   st.text_input("LT 월 직접 입력 (예: May 2026)", value="", key="lt_month_input")
+        if lt_month:
+            st.success(f"LT 월: **{lt_month}**")
+
+    # 하위 호환 변수(다운로드 ZIP 이름·can_generate 판정 등에서 참조)
+    uploaded_ele = uploaded_mt
+    uploaded_lx  = uploaded_lt
+    month = mt_month or lt_month
+else:
+    with up_col1:
+        st.markdown('<div class="poly-drop"><b>성적 엑셀</b><span class="hint">&nbsp;·&nbsp;.xlsx&nbsp;·&nbsp;MT/LT 모두 가능, 여러 파일 동시 업로드</span></div>', unsafe_allow_html=True)
+        uploaded_excel_files = st.file_uploader(
+            "성적 엑셀 업로드 (.xlsx)", type=["xlsx"],
+            accept_multiple_files=True, key="excel_upload"
+        )
+
+    # 하위 호환 — 기존 코드에서 uploaded_ele / uploaded_lx 를 참조하는 부분 대응
+    uploaded_ele = uploaded_excel_files[0] if uploaded_excel_files else None
+    uploaded_lx  = uploaded_excel_files[1] if len(uploaded_excel_files) > 1 else None
+
+    # 월 감지: 파일명에서 순서대로 시도 → 없으면 직접 입력
+    month = ""
+    for _uf in uploaded_excel_files:
+        _m = extract_month_from_filename(_uf.name)
+        if _m:
+            month = _m
+            break
+    if uploaded_excel_files and not month:
+        month = st.text_input("월을 직접 입력하세요 (예: April 2026)", value="", key="month_input")
+    if month:
+        st.success(f"감지된 월: **{month}**")
 
 import datetime
 if _use_sr:
@@ -553,7 +599,10 @@ else:
         bw_mag = bw_col4.number_input("MAG", 0, 30, value=_bw_def.get("MAG", 27), step=1, key=f"bw_mag_{campus}")
         bw_min_lc = {"GT": int(bw_gt), "MGT": int(bw_mgt), "S": int(bw_s), "MAG": int(bw_mag)}
 
-can_generate = bool(((uploaded_ele or uploaded_lx) and month) or uploaded_sr)
+if _is_jg_split:
+    can_generate = bool((uploaded_mt and mt_month) or (uploaded_lt and lt_month) or uploaded_sr)
+else:
+    can_generate = bool(((uploaded_ele or uploaded_lx) and month) or uploaded_sr)
 st.markdown('<div class="poly-cta-wrap">', unsafe_allow_html=True)
 _btn_generate = st.button("상장 생성하기", type="primary", disabled=not can_generate)
 st.markdown('</div>', unsafe_allow_html=True)
@@ -563,10 +612,66 @@ if _btn_generate:
     errors    = []
     is_jungbal_campus = (campus == _JUNGBAL_CAMPUS)
 
-    # ── Monthly Test 처리 ──────────────────────────────
-    ps = hr = bw = []
+    # ── Monthly/Level Test 처리 ──────────────────────────────
+    ps, hr, bw = [], [], []
     jb_ach = jb_mw = []   # 정발 전용
-    if (uploaded_ele or uploaded_lx) and month:
+    if _is_jg_split:
+        # ── 중계: MT칸/LT칸 각각 독립 선정·생성 (시험문구·폴더 분리) ──
+        _jobs = []
+        if uploaded_mt and mt_month:
+            _jobs.append((uploaded_mt, "Monthly", "MT", mt_month))
+        if uploaded_lt and lt_month:
+            _jobs.append((uploaded_lt, "Level", "LT", lt_month))
+        for _file, _lbl, _src, _mon in _jobs:
+            with st.spinner(f"{_src} 수상자 선정 중..."):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+                    _tmp.write(_file.read())
+                    _tmp_path = _tmp.name
+                _rows = load_rows_from_excel(_tmp_path)
+                os.unlink(_tmp_path)
+                _w = select_winners(
+                    _rows,
+                    perfect_score_min=float(ps_min),
+                    honor_roll_min=float(hr_min),
+                    best_writer_min_lc=bw_min_lc,
+                )
+                _ps = sorted(_w["perfect_score"], key=_sort_key)
+                _hr = sorted(_w["honor_roll"],    key=_sort_key)
+                _bw = sorted(_w["best_writer"],   key=_sort_key)
+                for _lst in (_ps, _hr, _bw):
+                    for _s in _lst:
+                        _s["_src"] = _src
+                        _s["_test_label"] = _lbl
+                ps.extend(_ps); hr.extend(_hr); bw.extend(_bw)
+            with st.spinner(f"{_src} 상장 PDF 생성 중..."):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    for award_type, folder, student_list in [
+                        ("perfect_score", "Perfect_Score", _ps),
+                        ("honor_roll",    "Honor_Roll",    _hr),
+                        ("best_writer",   "Best_Writer",   _bw),
+                    ]:
+                        if award_type not in _award_labels:
+                            continue
+                        for s in student_list:
+                            filename = _cert_filename(s["english_name"], s["class"], s.get("korean_name"))
+                            out_path = os.path.join(tmpdir, filename)
+                            try:
+                                build_certificate(
+                                    award_type=award_type,
+                                    english_name=s["english_name"],
+                                    student_class=s["class"],
+                                    month=_mon,
+                                    output_path=out_path,
+                                    template_override=cfg.get_template_path(campus, award_type),
+                                    campus=campus,
+                                    test_label=_lbl,
+                                )
+                                with open(out_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                generated.append((award_type, f"{_src}/{folder}", filename, pdf_bytes, s))
+                            except Exception as e:
+                                errors.append(f"[{_src}] {s['english_name']}: {e}")
+    elif (uploaded_ele or uploaded_lx) and month:
         with st.spinner("Monthly Test 수상자 선정 중..."):
             rows = []
             for _uf in [uploaded_ele, uploaded_lx]:
@@ -772,6 +877,9 @@ if "result" in st.session_state:
         _lbl_bw = _award_labels.get("best_writer",   "Best Writer")
         _lbl_sr = _award_labels.get("best_sr",       "Best SR")
         _has_bw = "best_writer" in _award_labels
+        _jg = (campus == _JUNGGYE_CAMPUS)   # 중계: MT/LT 구분 열 표시
+        def _jgcol(s):
+            return {"시험": s.get("_src", "")} if _jg else {}
         _res_cols = st.columns(4 if _has_bw else 3, gap="small")
         with _res_cols[0]:
             st.markdown(
@@ -779,7 +887,7 @@ if "result" in st.session_state:
                 f'<span class="cnt">{len(ps)}</span></div>', unsafe_allow_html=True)
             if ps:
                 ev_ps = st.dataframe(
-                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"]} for s in ps]),
+                    pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"]} for s in ps]),
                     hide_index=True, use_container_width=True,
                     selection_mode="single-row", on_select="rerun", key="sel_ps",
                 )
@@ -791,7 +899,7 @@ if "result" in st.session_state:
                 f'<span class="cnt">{len(hr)}</span></div>', unsafe_allow_html=True)
             if hr:
                 ev_hr = st.dataframe(
-                    pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
+                    pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
                     hide_index=True, use_container_width=True,
                     selection_mode="single-row", on_select="rerun", key="sel_hr",
                 )
@@ -804,7 +912,7 @@ if "result" in st.session_state:
                     f'<span class="cnt">{len(bw)}</span></div>', unsafe_allow_html=True)
                 if bw:
                     ev_bw = st.dataframe(
-                        pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
+                        pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
                         hide_index=True, use_container_width=True,
                         selection_mode="single-row", on_select="rerun", key="sel_bw",
                     )
@@ -873,7 +981,8 @@ if "result" in st.session_state:
         for at, _, fn, pb, s in generated:
             if at == _sel_award \
                     and s["english_name"] == _sel_student["english_name"] \
-                    and s["class"] == _sel_student["class"]:
+                    and s["class"] == _sel_student["class"] \
+                    and s.get("_src", "") == _sel_student.get("_src", ""):
                 col_img, col_info = st.columns([2, 1])
                 with col_img:
                     st.image(pdf_to_preview_png(pb), use_container_width=True)
@@ -881,6 +990,8 @@ if "result" in st.session_state:
                     st.markdown(f"**{_AWARD_LABEL[at]}**")
                     st.markdown(f"### {s['english_name']}")
                     st.caption(s["class"])
+                    if s.get("_src"):
+                        st.caption(f"구분: {s['_src']} · {s.get('_test_label', 'Monthly')} Test")
                     if at == "honor_roll":
                         st.metric("평균", f"{s['average']:.2f}%")
                     elif at == "best_writer":

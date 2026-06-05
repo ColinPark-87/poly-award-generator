@@ -868,12 +868,11 @@ def _render_yuseong(
             draw.text((tx, ty), date_text, font=body_font, fill=(0, 0, 0))
 
 
-def _inject_director_signature(template_path: str, director_name: str) -> bytes | None:
+def _apply_director_signature(doc, director_name: str) -> bool:
     """기본 템플릿(중계 등)의 박힌 원장 이름('Colin Park')을 배경색으로 덮고
-    설정된 이름을 손글씨체로 다시 그린다. 직함('Director')·서명선은 그대로.
-    원본 이름 텍스트를 못 찾으면 None 반환(원본 그대로 사용).
+    설정된 이름을 손글씨체로 다시 그린다(열린 doc에 in-place). 직함·서명선은 그대로.
+    원본 이름 텍스트를 못 찾으면 False 반환(변경 없음).
     좌표·폰트·색은 템플릿에서 자동 추출 → 4개 상장(perfect/honor/bw/sr) 공통 대응."""
-    doc  = fitz.open(template_path)
     page = doc[0]
 
     # 'Colin Park' 텍스트 span 자동 탐지 (한 span '...Colin Park...')
@@ -891,8 +890,7 @@ def _inject_director_signature(template_path: str, director_name: str) -> bytes 
         if target:
             break
     if target is None:
-        doc.close()
-        return None
+        return False
 
     bbox   = fitz.Rect(target["bbox"])
     origin = target["origin"]          # (x, baseline_y)
@@ -936,9 +934,63 @@ def _inject_director_signature(template_path: str, director_name: str) -> bytes 
         doc.subset_fonts()
     except Exception:
         pass
-    out = doc.tobytes(garbage=4, deflate=True)
-    doc.close()
-    return out
+    return True
+
+
+def _apply_test_label(doc, new_word: str = "Level") -> bool:
+    """기본 템플릿(중계 등)에 박힌 'Monthly Test' 문구를 '<new_word> Test'로 교체
+    (열린 doc에 in-place). PS/HR/BW 템플릿의 'on the Monthly Test'에 대응.
+    원본 폰트(PlayfairDisplay-Italic 14pt)·색을 그대로 맞춰 자연스럽게 치환한다.
+    'Monthly Test'를 못 찾으면 False 반환(변경 없음 — 안전)."""
+    page = doc[0]
+
+    # 'Monthly Test'가 포함된 span(폰트·크기·색·baseline 추출용) 탐지
+    target = None
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] != 0:
+            continue
+        for l in b["lines"]:
+            for s in l["spans"]:
+                if "Monthly Test" in s["text"]:
+                    target = s
+                    break
+            if target:
+                break
+        if target:
+            break
+    if target is None:
+        return False
+
+    rects = page.search_for("Monthly Test")
+    if not rects:
+        return False
+    r = rects[0]                                   # 교체 대상 사각형
+
+    size  = float(target["size"])
+    color = target["color"]
+    rgb   = (((color >> 16) & 255) / 255.0, ((color >> 8) & 255) / 255.0, (color & 255) / 255.0)
+
+    # 배경색: 문구 오른쪽 빈 구간의 '가장 밝은' 픽셀(=깨끗한 페이지색). 위쪽은
+    # 잉크(어센더)에 오염되므로 사용하지 않는다. 크림색(255,254,249) 등 자동 대응.
+    pix = page.get_pixmap(clip=fitz.Rect(r.x1 + 12, r.y0, r.x1 + 70, r.y1))
+    if pix.samples and pix.width * pix.height:
+        n = pix.n
+        data = pix.samples
+        px = [tuple(data[i:i + 3]) for i in range(0, len(data), n)]
+        bright = max(px, key=sum)
+        bg = (bright[0] / 255.0, bright[1] / 255.0, bright[2] / 255.0)
+    else:
+        bg = (1, 1, 1)
+
+    # 박힌 'Monthly Test' 글리프 제거(redaction, 테두리 없음)+배경색 채움 후 새 문구 재기입.
+    # redaction은 텍스트층까지 깨끗이 제거 → 최종 이미지·벡터 모두 'Monthly' 잔존 없음.
+    page.add_redact_annot(fitz.Rect(r.x0 - 1, r.y0 - 2, r.x1 + 2, r.y1 + 2), fill=bg)
+    page.apply_redactions()
+    font = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.BODY_ITALIC_FONT))
+    tw = fitz.TextWriter(page.rect, color=rgb)
+    tw.append(fitz.Point(r.x0, target["origin"][1]), f"{new_word} Test", font=font, fontsize=size)
+    tw.write_text(page)
+    return True
 
 
 def build_certificate(
@@ -950,12 +1002,15 @@ def build_certificate(
     template_override: str | None = None,
     extra_text:        str | None = None,   # 정발: 반 이름 or 레벨 이름
     campus:            str | None = None,
+    test_label:        str = "Monthly",     # 중계 등 기본템플릿: "Monthly"/"Level" 시험문구
 ) -> None:
     """
     상장 PDF 생성.
     award_type: 'perfect_score' | 'honor_roll' | 'best_writer' |
                 'achievement_certificate' | 'monthly_test_winner' | 'level_test_winner'
     extra_text: 정발 monthly/level winner의 "highest score in ___" 에 들어갈 텍스트
+    test_label: 기본 템플릿(중계 등) PS/HR/BW의 'on the Monthly Test' 문구 종류.
+                "Level"이면 'Level Test'로 치환. "Monthly"(기본)이면 원본 유지.
     """
     template_path = template_override or config.TEMPLATES.get(award_type)
     if not template_path or not os.path.exists(template_path):
@@ -984,19 +1039,25 @@ def build_certificate(
         img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
         _doc.close()
     else:
-        # 기본 템플릿 캠퍼스(중계 등): campus_config의 director가 기본("Colin Park")과 다르면
-        # 박힌 사인 이름을 교체해 래스터라이즈. (유성은 자체 템플릿이라 제외)
+        # 기본 템플릿 캠퍼스(중계 등): (1) campus_config의 director가 기본("Colin Park")과
+        # 다르면 박힌 사인 이름 교체, (2) test_label=="Level"이면 'Monthly Test'→'Level Test'
+        # 문구 교체. 두 작업을 한 doc에 in-place 적용 후 1회 래스터라이즈. (유성은 자체 템플릿이라 제외)
         _director = (config.get_campus_cfg(campus).get("director") if campus else None)
-        _sig_bytes = None
-        if (not is_yuseong and _director
-                and _director.strip()
-                and _director.strip() != config.SIGNATURE_DEFAULT_NAME):
-            _sig_bytes = _inject_director_signature(template_path, _director.strip())
-        if _sig_bytes:
-            _sdoc = fitz.open(stream=_sig_bytes, filetype="pdf")
-            _spix = _sdoc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
-            img   = Image.frombytes("RGB", [_spix.width, _spix.height], _spix.samples)
-            _sdoc.close()
+        _need_sig = bool(not is_yuseong and _director
+                         and _director.strip()
+                         and _director.strip() != config.SIGNATURE_DEFAULT_NAME)
+        _need_lbl = bool(not is_yuseong and not is_jungbal
+                         and str(test_label).strip().lower() == "level"
+                         and award_type in ("perfect_score", "honor_roll", "best_writer"))
+        if _need_sig or _need_lbl:
+            _doc = fitz.open(template_path)
+            if _need_sig:
+                _apply_director_signature(_doc, _director.strip())
+            if _need_lbl:
+                _apply_test_label(_doc, "Level")
+            _pix = _doc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
+            img  = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
+            _doc.close()
         else:
             img = _pdf_page_to_pil(template_path, 0)
 

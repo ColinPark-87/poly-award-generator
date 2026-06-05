@@ -148,6 +148,8 @@ DATE_CENTER_X  = 706           # Date 밑줄 중심 X (2340px 기준)
 DATE_FONT_SIZE = 52
 DATE_COLOR     = (0, 0, 0)
 DATE_FONT      = "PlayfairDisplay-Regular.ttf"
+# 기본 템플릿 본문 이탤릭(중계 'Monthly/Level Test' 문구 치환용 — 템플릿 내장체와 동일 계열)
+BODY_ITALIC_FONT = "PlayfairDisplay-Italic.ttf"
 
 # 자동 감지 실패 시 폴백
 DATE_LINE_Y_FALLBACK = 1295
