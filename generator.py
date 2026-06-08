@@ -993,6 +993,111 @@ def _apply_test_label(doc, new_word: str = "Level") -> bool:
     return True
 
 
+def _apply_campus_label(doc, old_token: str, new_token: str) -> bool:
+    """정발/일산 양식 템플릿에 박힌 캠퍼스 표기(old_token)를 new_token으로 교체(in-place).
+    두 곳을 줄 전체 재기입으로 교체(글자 간격 깨짐 방지):
+      - 제목  (스크립트체, size>30): GreatVibes(템플릿 PalaceScriptMT 최근접 대체 ·
+               cert의 날짜/이름과 동일 폰트)로 페이지 중앙 정렬 재기입
+      - 서명란(Calibri, size<30): Calibri-Bold(없으면 Montserrat-Bold 폴백)로 좌측 x 유지 재기입
+    redaction은 글리프만 제거하고 워터마크 이미지·라인아트는 보존(fill=False, images/graphics NONE).
+    new_token이 길어도 폭 초과 시 자동 축소(짤림 방지). old_token 미검출 시 False(변경 없음)."""
+    page   = doc[0]
+    page_w = page.rect.width
+
+    title = sig = None
+    for blk in page.get_text("dict")["blocks"]:
+        if blk["type"] != 0:
+            continue
+        for ln in blk["lines"]:
+            for sp in ln["spans"]:
+                if old_token in sp["text"]:
+                    if sp["size"] > 30 and title is None:
+                        title = sp
+                    elif sp["size"] <= 30 and sig is None:
+                        sig = sp
+    if title is None and sig is None:
+        return False
+
+    gv = fitz.Font(fontfile=os.path.join(config.FONT_DIR, "GreatVibes-Regular.ttf"))
+    _cal_path = "C:/Windows/Fonts/calibrib.ttf"
+    sig_path  = _cal_path if os.path.exists(_cal_path) \
+        else os.path.join(config.FONT_DIR, "Montserrat-Bold.ttf")
+    cal = fitz.Font(fontfile=sig_path)
+
+    # 1) redaction (글리프만 제거, 배경 워터마크/라인아트 보존)
+    if title is not None:
+        tr = fitz.Rect(title["bbox"])
+        page.add_redact_annot(fitz.Rect(tr.x0 - 2, tr.y0 - 3, tr.x1 + 2, tr.y1 + 3), fill=False)
+    if sig is not None:
+        sr = fitz.Rect(sig["bbox"])
+        page.add_redact_annot(fitz.Rect(sr.x0 - 2, sr.y0 - 2, sr.x1 + 4, sr.y1 + 2), fill=False)
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                          graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+
+    # 2) 새 텍스트 재기입
+    if title is not None:
+        t_text = title["text"].replace(old_token, new_token)
+        t_size = float(title["size"])
+        max_w  = page_w - 120.0
+        while t_size > 24 and gv.text_length(t_text, fontsize=t_size) > max_w:
+            t_size -= 1.0
+        t_x = (page_w - gv.text_length(t_text, fontsize=t_size)) / 2.0
+        tw = fitz.TextWriter(page.rect, color=(0.0, 0.0, 0.0))
+        tw.append(fitz.Point(t_x, title["origin"][1]), t_text, font=gv, fontsize=t_size)
+        tw.write_text(page)
+    if sig is not None:
+        s_text = sig["text"].replace(old_token, new_token)
+        c   = sig["color"]
+        rgb = (((c >> 16) & 255) / 255.0, ((c >> 8) & 255) / 255.0, (c & 255) / 255.0)
+        s_size = float(sig["size"])
+        avail  = page_w - sig["origin"][0] - 8.0
+        while s_size > 8 and cal.text_length(s_text, fontsize=s_size) > avail:
+            s_size -= 0.5
+        tw2 = fitz.TextWriter(page.rect, color=rgb)
+        tw2.append(fitz.Point(sig["origin"][0], sig["origin"][1]), s_text, font=cal, fontsize=s_size)
+        tw2.write_text(page)
+    return True
+
+
+def _apply_jungbal_director_signature(doc, director_name: str) -> bool:
+    """정발/일산 템플릿 우하단의 원장 서명 이미지('Charlotte Lee')를 제거하고
+    새 원장 이름을 손글씨체(config.SIGNATURE_FONT)로 같은 자리에 그린다(in-place).
+    중계의 _apply_director_signature와 같은 개념이나, 여기선 서명이 텍스트가 아닌
+    이미지(XObject)라 page.delete_image로 제거(전체배경 워터마크는 보존).
+    이름이 길어도 페이지 밖으로 나가지 않게 폭 자동축소(짤림 방지).
+    서명 이미지를 못 찾으면 False(변경 없음 — 안전)."""
+    page   = doc[0]
+    pw, ph = page.rect.width, page.rect.height
+
+    # 서명 이미지 탐지: 하단 우측의 작은 이미지(전체배경/상단데코 제외)
+    sig = None
+    for im in page.get_image_info(xrefs=True):
+        x0, y0, x1, y1 = im["bbox"]
+        if (x0 > pw * 0.5 and y0 > ph * 0.5
+                and (x1 - x0) < pw * 0.5 and (y1 - y0) < ph * 0.4):
+            sig = im
+            break
+    if sig is None:
+        return False
+
+    bbox = fitz.Rect(sig["bbox"])
+    page.delete_image(sig["xref"])          # 서명 이미지만 제거(워터마크 보존)
+
+    font = fitz.Font(fontfile=os.path.join(config.FONT_DIR, config.SIGNATURE_FONT))
+    cx   = (bbox.x0 + bbox.x1) / 2.0
+    # 페이지 양끝 8pt 여백을 넘지 않도록 허용 최대폭 산출(중앙정렬 기준) → 짤림 원천 차단
+    max_w = 2.0 * min(cx - 8.0, pw - 8.0 - cx)
+    fs = bbox.height * 1.1
+    while fs > 8 and font.text_length(director_name, fontsize=fs) > max_w:
+        fs -= 1.0
+    tx = cx - font.text_length(director_name, fontsize=fs) / 2.0
+    ty = bbox.y1 - bbox.height * 0.28        # 원본 서명 baseline 근처
+    tw = fitz.TextWriter(page.rect, color=(0.0, 0.0, 0.0))
+    tw.append(fitz.Point(tx, ty), director_name, font=font, fontsize=fs)
+    tw.write_text(page)
+    return True
+
+
 def build_certificate(
     award_type:        str,
     english_name:      str,
@@ -1032,9 +1137,20 @@ def build_certificate(
         return
 
     if is_jungbal:
-        # ── 정발: 내장 PalaceScriptMT로 날짜/반이름 PDF에 직접 삽입 후 래스터라이즈
+        # ── 정발/일산: 날짜/반이름 PDF에 직접 삽입 후 래스터라이즈
         modified_bytes = _inject_jungbal_text_pdf(template_path, month, extra_text)
         _doc  = fitz.open(stream=modified_bytes, filetype="pdf")
+        _cfg_c = config.get_campus_cfg(campus) if campus else {}
+        # 일산 등: campus_label 오버라이드(기본 'Ilsan'과 다르면) 상장 캠퍼스 표기 치환.
+        # 정발은 campus_label 미설정 → None → 변경 없음(정발 양식 보존).
+        _label = _cfg_c.get("campus_label")
+        if _label and _label.strip() and _label.strip() != config.CAMPUS_LABEL_DEFAULT:
+            _apply_campus_label(_doc, config.CAMPUS_LABEL_DEFAULT, _label.strip())
+        # 일산 등: 원장 서명 변경(기본 'Charlotte Lee'와 다르면) 우하단 서명 이미지 교체.
+        # 정발은 director 미설정 → None → 변경 없음(정발 양식 보존).
+        _director = _cfg_c.get("director")
+        if _director and _director.strip() and _director.strip() != config.JUNGBAL_DIRECTOR_DEFAULT:
+            _apply_jungbal_director_signature(_doc, _director.strip())
         _pix  = _doc[0].get_pixmap(matrix=fitz.Matrix(config.DPI / 72, config.DPI / 72))
         img   = Image.frombytes("RGB", [_pix.width, _pix.height], _pix.samples)
         _doc.close()

@@ -103,8 +103,12 @@ poly_header(
 
 # ── 캠퍼스 선택 ─────────────────────────────────────────
 _JUNGBAL_CAMPUS = "정발"   # 정발 전용 로직을 적용할 캠퍼스 이름
+_ILSAN_CAMPUS   = "일산"   # 일산: 정발과 동일 양식(3종)·선정로직. 캠퍼스 표기만 'Ilsan'
 _YUSEONG_CAMPUS = "유성"   # 유성 전용 SR Excel 로직
 _JUNGGYE_CAMPUS = "중계"   # MT/LT 업로드 분리 + LT 'Level Test' 문구 적용 캠퍼스
+
+# 정발 양식(Achievement / Monthly·Level Test Winner)을 공유하는 캠퍼스 묶음
+_JUNGBAL_STYLE = (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS)
 
 if "campus_list" not in st.session_state:
     st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "유성", "정발", "분당엠폴리"]
@@ -166,17 +170,20 @@ if st.session_state.get("show_delete_input"):
 import datetime as _dt
 poly_campus_banner(campus, term=f"{_dt.date.today().year}년 {_dt.date.today().month}월")
 
-# 중계: 핫리로드(같은 프로세스 재실행) 후에도 신규 generator(build_certificate test_label,
-# _apply_test_label)·matcher가 반영되도록 디스크에서 최신 재로딩 후 이름 재바인딩(세션 1회).
-if campus == _JUNGGYE_CAMPUS:
-    if not st.session_state.get("_jg_mods_fresh1"):
+# 중계·일산: 핫리로드(같은 프로세스 재실행) 후에도 신규 generator(build_certificate test_label·
+# _apply_test_label·_apply_campus_label)·matcher·config(set_campus_label 등)가 반영되도록
+# 디스크에서 최신 재로딩 후 이름 재바인딩(세션 1회, 캠퍼스별 guard key 분리).
+if campus in (_JUNGGYE_CAMPUS, _ILSAN_CAMPUS):
+    _reload_guard = "_jg_mods_fresh1" if campus == _JUNGGYE_CAMPUS else "_il_mods_fresh1"
+    if not st.session_state.get(_reload_guard):
         importlib.reload(cfg)
         importlib.reload(matcher)
         importlib.reload(generator)
-        st.session_state["_jg_mods_fresh1"] = True
+        st.session_state[_reload_guard] = True
     build_certificate           = generator.build_certificate
     pdf_to_preview_png          = generator.pdf_to_preview_png
     select_winners              = matcher.select_winners
+    select_jungbal_winners      = matcher.select_jungbal_winners
     load_rows_from_excel        = matcher.load_rows_from_excel
     extract_month_from_filename = matcher.extract_month_from_filename
 
@@ -184,9 +191,43 @@ if campus == _JUNGGYE_CAMPUS:
 _campus_cfg = cfg.get_campus_cfg(campus)
 _bw_def     = _campus_cfg["bw_min_lc"]
 
+# ── 일산: 원장 사인 설정 (정발 양식의 우하단 손글씨 서명 'Charlotte Lee' 변경) ──
+# 양식·수상로직은 정발과 100% 동일, 캠퍼스 표기는 'POLY Ilsan' 고정.
+# 중계처럼 '원장 이름'만 변경 — 우하단 손글씨 서명 이미지를 입력한 이름으로 교체.
+if campus == _ILSAN_CAMPUS:
+    with st.expander("⚙️ 원장 사인 설정 (우하단 손글씨 서명 이름만 변경)", expanded=False):
+        _cur_dir = _campus_cfg.get("director", cfg.JUNGBAL_DIRECTOR_DEFAULT)
+        _dcol, _pcol = st.columns([1, 1])
+        with _dcol:
+            _new_dir = st.text_input("원장 이름 (서명에 표시)", value=_cur_dir,
+                                     key=f"jbdir_{campus}")
+            st.caption(f"손글씨체({cfg.SIGNATURE_FONT.replace('.ttf','')})로 우하단 서명 자리에 표시. "
+                       f"캠퍼스 표기 'POLY {cfg.CAMPUS_LABEL_DEFAULT}'·양식·수상 로직은 정발과 동일 유지. "
+                       f"기본값 '{cfg.JUNGBAL_DIRECTOR_DEFAULT}'이면 원본 서명 그대로 사용. "
+                       "이름이 길어도 자동 축소되어 짤리지 않습니다.")
+            if st.button("저장", key=f"jbdir_save_{campus}", type="primary"):
+                cfg.set_campus_director(campus, _new_dir.strip() or cfg.JUNGBAL_DIRECTOR_DEFAULT)
+                st.success(f"저장 완료 — {campus} 원장 사인: "
+                           f"{(_new_dir.strip() or cfg.JUNGBAL_DIRECTOR_DEFAULT)}. "
+                           "지금부터 생성되는 상장에 반영됩니다.")
+                st.rerun()
+        with _pcol:
+            try:
+                _dtmpl = cfg.get_template_path(campus, "achievement_certificate")
+                _doc_d = generator.fitz.open(_dtmpl)
+                _nm_d = _new_dir.strip()
+                if _nm_d and _nm_d != cfg.JUNGBAL_DIRECTOR_DEFAULT:
+                    generator._apply_jungbal_director_signature(_doc_d, _nm_d)
+                _dir_pdf = _doc_d.tobytes()
+                _doc_d.close()
+                st.image(pdf_to_preview_png(_dir_pdf, preview_width=440),
+                         caption="사인 미리보기 (Achievement Certificate)", use_container_width=True)
+            except Exception as _e:
+                st.caption(f"미리보기를 표시할 수 없습니다: {_e}")
+
 # ── 원장 사인 설정 (기본 템플릿 캠퍼스: 중계 등) ──────────────
 # 사인의 원장 '이름'만 변경. 직함('Director')·서명선·수상 로직 등 다른 조건은 그대로.
-if campus not in (_JUNGBAL_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴리"):
+if campus not in (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴리"):
     with st.expander("⚙️ 원장 사인 설정 (사인 이름만 변경 · 다른 조건 유지)", expanded=False):
         _cur_dir = _campus_cfg.get("director", cfg.SIGNATURE_DEFAULT_NAME)
         _dcol, _pcol = st.columns([1, 1])
@@ -429,7 +470,7 @@ if campus == "분당엠폴리":
 # ══════════════════════════════════════════════════════════
 # 상단: 2분할 업로드
 # ══════════════════════════════════════════════════════════
-_use_sr = (campus != _JUNGBAL_CAMPUS)   # 정발은 Best SR 미사용
+_use_sr = (campus not in _JUNGBAL_STYLE)   # 정발·일산은 Best SR 미사용
 _hint   = "Monthly Test 결과 엑셀(ELE / LX)을 업로드하세요." if not _use_sr else \
           "Monthly Test 결과 엑셀(ELE / LX)과 Best SR CSV를 업로드하세요."
 poly_section("01 · 데이터 업로드", _hint)
@@ -528,8 +569,8 @@ _award_labels = _campus_cfg.get("award_labels", {
     "best_sr":       "Best SR",
 })
 
-if campus == _JUNGBAL_CAMPUS:
-    # 정발: 설정된 가중치를 텍스트로 표시 (변경은 campus_config.json에서)
+if campus in _JUNGBAL_STYLE:
+    # 정발·일산: 설정된 가중치를 텍스트로 표시 (변경은 campus_config.json에서)
     _saved_w = _campus_cfg.get("score_weights", JUNGBAL_DEFAULT_WEIGHTS)
     jungbal_weights = {k: float(_saved_w.get(k, JUNGBAL_DEFAULT_WEIGHTS[k]))
                        for k in JUNGBAL_DEFAULT_WEIGHTS}
@@ -610,7 +651,7 @@ if _btn_generate:
 
     generated = []   # (award_type, folder, filename, pdf_bytes, student)
     errors    = []
-    is_jungbal_campus = (campus == _JUNGBAL_CAMPUS)
+    is_jungbal_campus = (campus in _JUNGBAL_STYLE)
 
     # ── Monthly/Level Test 처리 ──────────────────────────────
     ps, hr, bw = [], [], []
@@ -717,6 +758,7 @@ if _btn_generate:
                                     output_path=out_path,
                                     template_override=cfg.get_template_path(campus, award_type),
                                     extra_text=s["class"] if needs_extra else None,
+                                    campus=campus,   # 일산: campus_label 치환에 필요(정발은 영향 없음)
                                 )
                                 with open(out_path, "rb") as f:
                                     pdf_bytes = f.read()
@@ -1047,10 +1089,10 @@ _manual_year = my_col.number_input("연도", 2020, 2100,
                                     datetime.date.today().year, key="manual_year")
 _manual_month_str = f"{_manual_month_name} {int(_manual_year)}"
 
-# 정발 monthly/level winner는 extra_text = 반 이름 자동 사용
+# 정발·일산 monthly/level winner는 extra_text = 반 이름 자동 사용
 _manual_extra = (
     _manual_class
-    if campus == _JUNGBAL_CAMPUS and _manual_award in {"monthly_test_winner", "level_test_winner"}
+    if campus in _JUNGBAL_STYLE and _manual_award in {"monthly_test_winner", "level_test_winner"}
     else None
 )
 

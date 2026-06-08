@@ -46,6 +46,29 @@ def set_campus_director(campus: str, name: str) -> None:
     with open(_CAMPUS_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# ── 캠퍼스 표기 라벨 (정발/일산 양식: 상장에 박힌 "POLY <campus>") ──
+# 정발 템플릿에는 "Jeongbal", 일산 전용 템플릿에는 기본 "Ilsan"이 새겨져 있다.
+# 일산 캠퍼스 표기는 'Ilsan' 고정(전용 템플릿에 새김). campus_config.json의
+# "campus_label" 값이 기본("Ilsan")과 다르면 렌더 시 치환(안전망, 일반적으로 미사용).
+CAMPUS_LABEL_DEFAULT = "Ilsan"
+
+# ── 정발/일산 양식 원장 서명 (상장 우하단 손글씨 서명 이미지) ──────
+# 정발/일산 템플릿 우하단에는 'Charlotte Lee' 손글씨 서명이 이미지로 박혀 있다.
+# campus_config.json의 캠퍼스별 "director" 값이 기본("Charlotte Lee")과 다르면,
+# 렌더 시 그 이미지를 제거하고 새 원장 이름을 손글씨체(SIGNATURE_FONT)로 다시 그린다.
+# (중계의 'Colin Park' 텍스트 사인 교체와 같은 개념. 단 여기선 서명이 이미지)
+JUNGBAL_DIRECTOR_DEFAULT = "Charlotte Lee"
+
+def set_campus_label(campus: str, label: str) -> None:
+    """캠퍼스 표기 이름(상장의 'POLY <campus>')을 campus_config.json 에 저장(영구).
+    파일에 캠퍼스가 없으면 기본 설정으로 만들어 campus_label 만 갱신."""
+    data = load_campus_config()
+    if campus not in data:
+        data[campus] = json.loads(json.dumps(_DEFAULT_CAMPUS_CFG))
+    data[campus]["campus_label"] = label.strip()
+    with open(_CAMPUS_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 def get_template_path(campus: str, award_type: str) -> str:
     """캠퍼스별 템플릿 경로. 없으면 기본 templates/ 폴더 사용."""
     campus_path = os.path.join(TEMPLATE_DIR, campus, f"{award_type}.pdf")
