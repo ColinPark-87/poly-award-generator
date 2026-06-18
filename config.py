@@ -179,9 +179,27 @@ DATE_LINE_Y_FALLBACK = 1295
 
 # ── 분당엠폴리 전용 ──────────────────────────────────────────
 BUNDANG_AWARD_TYPES = {"grammar_certification", "certificate_of_achievement",
-                       "best_book_reflection", "voca_king"}
+                       "best_book_reflection", "voca_king", "best_essay"}
 BUNDANG_KR_FONT      = "NanumGothic-Regular.ttf"   # 반코드·월·본문
 BUNDANG_KR_FONT_BOLD = "NanumGothic-Bold.ttf"      # 학생이름·제목 월
+
+# ── Best Essay (Certificate of Excellence) 전용 ──────────────
+# 템플릿(templates/분당엠폴리/best_essay.pdf)은 원본 PPT 슬라이드1을 PowerPoint COM 으로
+# 내보낸 1쪽 PDF. 제목(Zen Old Mincho)·정적문구·서명·'MPOLY'의 파란 M 까지 베이킹됨.
+# 반코드·이름만 비워져 있어 런타임에 그 자리에 벡터로 올린다. (build_bestessay_template.py)
+# 좌표는 PDF 포인트(페이지 1260×891pt = 17.5×12.375in × 72), 좌측정렬.
+BUNDANG_BE_CLASS_POS   = (137.0, 481.0)            # 반코드 baseline (좌측정렬)
+BUNDANG_BE_CLASS_SIZE  = 29.0
+BUNDANG_BE_CLASS_COLOR = (0, 0, 0)
+BUNDANG_BE_NAME_POS    = (140.0, 568.0)            # 이름 baseline (좌측정렬)
+BUNDANG_BE_NAME_SIZE   = 56.0                      # NanumGothic 캡높이가 원본(60pt 세리프)과 비슷
+BUNDANG_BE_NAME_MIN    = 30.0
+BUNDANG_BE_NAME_MAX_W  = 760.0                     # 넘치면 자동 축소(우측 장식 침범 방지)
+BUNDANG_BE_NAME_COLOR  = (2 / 255, 100 / 255, 108 / 255)   # 원본 청록(#02646C)
+# 제목(편집 가능): 기본값과 다르면 두 줄을 덮고 PlayfairDisplay 금색으로 재기입
+BUNDANG_BE_TITLE_L1_DEFAULT = "2026 Spring Semester"
+BUNDANG_BE_TITLE_L2_DEFAULT = "Best Essay 1"
+BUNDANG_BE_TITLE_COLOR      = (201 / 255, 155 / 255, 64 / 255)   # 원본 금색(#C99B40)
 
 # ── Voca King 전용 ───────────────────────────────────────────
 # 템플릿(templates/분당엠폴리/voca_king.pdf)은 미작성본2(854×642px)를 그대로 깐 래스터로,

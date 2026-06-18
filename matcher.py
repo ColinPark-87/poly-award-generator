@@ -506,6 +506,50 @@ def load_bundang_voca_king(file_path: str) -> list[dict[str, Any]]:
     return out
 
 
+def load_bundang_best_essay(file_path: str) -> list[dict[str, Any]]:
+    """'List' 시트의 전원 → Best Essay(Certificate of Excellence) 상장 명단.
+    구조: 반코드(예 5HO1_1) 열 + '이름' 열('정현우 (Daniel Jung)'). 'O' 마크는 무관(전원 발급).
+    반코드는 이름 왼쪽 컬럼 중 클래스코드 패턴(\\d[A-Z]{2}...)을 그대로 사용(상장에 _N 까지 표기)."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    if "List" not in wb.sheetnames:
+        return []
+    rows = list(wb["List"].iter_rows(values_only=True))
+    hdr_i = ni = None
+    for i, row in enumerate(rows):
+        cells = [_bd_norm(c) for c in row]
+        if "이름" in cells:
+            hdr_i, ni = i, cells.index("이름")
+            break
+    if ni is None:
+        return []
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows[hdr_i + 1:]:
+        cells = [_bd_norm(c) for c in row]
+        if ni >= len(cells) or not cells[ni] or "(" not in cells[ni]:
+            continue
+        # 반코드: 이름 왼쪽 컬럼 중 클래스코드 패턴(5HO1_1 등)
+        cls = ""
+        for j in range(ni - 1, -1, -1):
+            if j < len(cells) and re.match(r"^\d[A-Z]{2}", cells[j]):
+                cls = cells[j]
+                break
+        full = cells[ni].strip()
+        key = (cls, full)
+        if key in seen:
+            continue
+        seen.add(key)
+        kor, eng = parse_student_name(full)
+        out.append({
+            "class":        cls,
+            "korean_name":  kor,
+            "english_name": eng,
+            "full_name":    full,
+        })
+    return out
+
+
 def select_winners(
     rows: list[dict[str, Any]],
     perfect_score_min: float = 100.0,

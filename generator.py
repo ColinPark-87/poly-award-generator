@@ -503,6 +503,59 @@ def _inject_bundang_text_pdf(
         doc.close()
         return out
 
+    if award_type == "best_essay":
+        # 템플릿(best_essay.pdf) = PowerPoint COM 으로 내보낸 1쪽. 제목(Zen Old Mincho 금색)·
+        # 정적문구·서명·'MPOLY'의 파란 M 이 베이킹돼 있고 반코드·이름만 비어 있다.
+        # 변수(반코드·이름)만 좌측정렬 벡터로 올리고, 제목은 기본과 다를 때만 재기입.
+        # ── 반코드 (좌측정렬, 검정) ──
+        cx, cy = config.BUNDANG_BE_CLASS_POS
+        if student_class:
+            ctw = fitz.TextWriter(page.rect, color=config.BUNDANG_BE_CLASS_COLOR)
+            ctw.append(fitz.Point(cx, cy), student_class.strip(), font=nf_r,
+                       fontsize=config.BUNDANG_BE_CLASS_SIZE)
+            ctw.write_text(page)
+        # ── 이름 (좌측정렬, 청록, 넘치면 자동 축소) ──
+        nx, ny = config.BUNDANG_BE_NAME_POS
+        nm = english_name.strip()
+        if nm:
+            nsz = _fit(nf_r, nm, config.BUNDANG_BE_NAME_MAX_W,
+                       config.BUNDANG_BE_NAME_SIZE, minsz=config.BUNDANG_BE_NAME_MIN)
+            ntw = fitz.TextWriter(page.rect, color=config.BUNDANG_BE_NAME_COLOR)
+            ntw.append(fitz.Point(nx, ny), nm, font=nf_r, fontsize=nsz)
+            ntw.write_text(page)
+        # ── 제목(편집 가능): month 인자에 "L1|L2". 기본과 다르면 두 줄 덮고 재기입 ──
+        if "|" in (month or ""):
+            _l1, _l2 = (month.split("|", 1) + [""])[:2]
+        else:
+            _l1, _l2 = config.BUNDANG_BE_TITLE_L1_DEFAULT, (month or config.BUNDANG_BE_TITLE_L2_DEFAULT)
+        _l1, _l2 = _l1.strip(), _l2.strip()
+        if (_l1, _l2) != (config.BUNDANG_BE_TITLE_L1_DEFAULT, config.BUNDANG_BE_TITLE_L2_DEFAULT):
+            # 베이킹된 제목 두 줄(상단·큰 글씨) 검출 → 덮고 PlayfairDisplay 금색으로 재기입
+            tspans = sorted(
+                [s for s in spans if s["size"] > 45 and s["origin"][1] < ph_h * 0.35],
+                key=lambda s: s["origin"][1])
+            if len(tspans) >= 2:
+                pf = fitz.Font(fontfile=os.path.join(config.FONT_DIR, "PlayfairDisplay-Regular.ttf"))
+                ttw = fitz.TextWriter(page.rect, color=config.BUNDANG_BE_TITLE_COLOR)
+                for sp, txt in zip(tspans[:2], (_l1, _l2)):
+                    _cover(sp["bbox"][0], sp["bbox"][1], sp["bbox"][2], sp["bbox"][3], pad=3)
+                    if not txt:
+                        continue
+                    up = txt.upper()                       # 원본 제목 대문자 스타일 모방
+                    tsz = float(sp["size"])
+                    while tsz > 24 and pf.text_length(up, fontsize=tsz) > 880:
+                        tsz -= 1
+                    ttw.append(fitz.Point(sp["origin"][0], sp["origin"][1]),
+                               up, font=pf, fontsize=tsz)
+                ttw.write_text(page)
+        try:
+            doc.subset_fonts()
+        except Exception:
+            pass
+        out = doc.tobytes(garbage=4, deflate=True)
+        doc.close()
+        return out
+
     if award_type == "certificate_of_achievement":
         # 이름선(굵은 가로선) 감지 → 덮고 그 위에 "반 영문이름"
         nl = None

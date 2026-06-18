@@ -306,6 +306,7 @@ if campus == "분당엠폴리":
     load_bundang_grammar   = matcher.load_bundang_grammar
     load_bundang_best_br   = matcher.load_bundang_best_br
     load_bundang_voca_king = matcher.load_bundang_voca_king
+    load_bundang_best_essay = matcher.load_bundang_best_essay
 
     _BD_MONTHS = ["January", "February", "March", "April", "May", "June",
                   "July", "August", "September", "October", "November", "December"]
@@ -314,7 +315,8 @@ if campus == "분당엠폴리":
     _BD_TITLES = {"certificate_of_achievement": "🥇 Level Top 상장",
                   "grammar_certification": "🏆 Grammar 상장",
                   "best_book_reflection": "📖 Best BR 상장",
-                  "voca_king": "📚 Voca King 상장"}
+                  "voca_king": "📚 Voca King 상장",
+                  "best_essay": "✍️ Best Essay 상장"}
 
     def _bd_run(specs, result_key, zip_tag, month):
         """specs: [(award_type, folder, [students], name_key)] → 생성·ZIP·세션 저장."""
@@ -341,10 +343,11 @@ if campus == "분당엠폴리":
         with zipfile.ZipFile(_zip, "w", zipfile.ZIP_DEFLATED) as _zf:
             for _, _folder, _fn, _bytes, _ in generated:
                 _zf.writestr(f"{_folder}/{_fn}", _bytes)
+        _mtag = re.sub(r'[\\/:*?"<>|]+', "_", month).replace(" ", "_").strip("_")
         st.session_state[result_key] = {
             "generated": generated, "errors": errors,
             "zip_bytes": _zip.getvalue(),
-            "zip_name": f"분당엠폴리_{zip_tag}_{month.replace(' ', '_')}_상장.zip",
+            "zip_name": f"분당엠폴리_{zip_tag}_{_mtag}_상장.zip",
         }
 
     def _bd_render(result_key, award_types, sel_prefix):
@@ -463,6 +466,30 @@ if campus == "분당엠폴리":
         _bd_run([("voca_king", "Voca_King", _vk, "full_name")],
                 "bd_vk_result", "VocaKing", _vk_month)
     _bd_render("bd_vk_result", ["voca_king"], "bd_vk")
+
+    # ── 04 · Best Essay 상장 (Certificate of Excellence) ─────
+    poly_section("04 · Best Essay 상장",
+                 "Best Essay 명단(.xlsx, 'List' 시트: 반코드 + '이름'(한글 (English))) 업로드 → "
+                 "List 전원에게 발급. 아래 제목 2줄이 상장 상단(금색)에 반영됩니다.")
+    _be_c1, _be_c2 = st.columns(2)
+    _be_l1 = _be_c1.text_input("제목 1줄 (학기)", value=cfg.BUNDANG_BE_TITLE_L1_DEFAULT,
+                               key="bd_be_l1")
+    _be_l2 = _be_c2.text_input("제목 2줄 (상장명)", value=cfg.BUNDANG_BE_TITLE_L2_DEFAULT,
+                               key="bd_be_l2")
+    _be_file = st.file_uploader("Best Essay 명단 (.xlsx)", type=["xlsx"], key="bd_be_excel")
+    if st.button("Best Essay 상장 생성", key="bd_be_gen", type="primary") and _be_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as _tmp:
+            _tmp.write(_be_file.read())
+            _p = _tmp.name
+        try:
+            _be = load_bundang_best_essay(_p)
+        finally:
+            os.unlink(_p)
+        # 제목 두 줄을 "L1|L2" 로 month 인자에 실어 generator 가 기본과 다르면 재기입
+        _be_title = f"{_be_l1.strip()}|{_be_l2.strip()}"
+        _bd_run([("best_essay", "Best_Essay", _be, "full_name")],
+                "bd_be_result", "BestEssay", _be_title)
+    _bd_render("bd_be_result", ["best_essay"], "bd_be")
     poly_footer()
     st.stop()
 
