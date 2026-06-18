@@ -507,21 +507,21 @@ def _inject_bundang_text_pdf(
         # 템플릿(best_essay.pdf) = PowerPoint COM 으로 내보낸 1쪽. 제목(Zen Old Mincho 금색)·
         # 정적문구·서명·'MPOLY'의 파란 M 이 베이킹돼 있고 반코드·이름만 비어 있다.
         # 변수(반코드·이름)만 좌측정렬 벡터로 올리고, 제목은 기본과 다를 때만 재기입.
-        # ── 반코드 (좌측정렬, 검정) ──
+        # ── 반코드 (좌측정렬, 검정, 볼드) ──
         cx, cy = config.BUNDANG_BE_CLASS_POS
         if student_class:
             ctw = fitz.TextWriter(page.rect, color=config.BUNDANG_BE_CLASS_COLOR)
-            ctw.append(fitz.Point(cx, cy), student_class.strip(), font=nf_r,
+            ctw.append(fitz.Point(cx, cy), student_class.strip(), font=nf_b,
                        fontsize=config.BUNDANG_BE_CLASS_SIZE)
             ctw.write_text(page)
-        # ── 이름 (좌측정렬, 청록, 넘치면 자동 축소) ──
+        # ── 이름 (좌측정렬, 청록, 볼드, 넘치면 자동 축소) ──
         nx, ny = config.BUNDANG_BE_NAME_POS
         nm = english_name.strip()
         if nm:
-            nsz = _fit(nf_r, nm, config.BUNDANG_BE_NAME_MAX_W,
+            nsz = _fit(nf_b, nm, config.BUNDANG_BE_NAME_MAX_W,
                        config.BUNDANG_BE_NAME_SIZE, minsz=config.BUNDANG_BE_NAME_MIN)
             ntw = fitz.TextWriter(page.rect, color=config.BUNDANG_BE_NAME_COLOR)
-            ntw.append(fitz.Point(nx, ny), nm, font=nf_r, fontsize=nsz)
+            ntw.append(fitz.Point(nx, ny), nm, font=nf_b, fontsize=nsz)
             ntw.write_text(page)
         # ── 제목(편집 가능): month 인자에 "L1|L2". 기본과 다르면 두 줄 덮고 재기입 ──
         if "|" in (month or ""):
