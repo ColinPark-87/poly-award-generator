@@ -4,3 +4,12 @@ __pycache__/
 *.png
 실행.bat
 .gstack/
+.claude/
+# 로컬 전용: 버전 백업·디버그·테스트 산출물
+*_before_*.py
+*_v[0-9]_before_*.json
+debug_scan.py
+gen_test_images.py
+scan_templates.py
+test_output/
+_brtitle.txt
