@@ -244,11 +244,11 @@ if campus not in (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴
             try:
                 _ptmpl = cfg.get_template_path(campus, "perfect_score")
                 _nm = _new_dir.strip()
+                _doc_s = generator.fitz.open(_ptmpl)
                 if _nm and _nm != cfg.SIGNATURE_DEFAULT_NAME:
-                    _sig_pdf = generator._inject_director_signature(_ptmpl, _nm)
-                else:
-                    with open(_ptmpl, "rb") as _f:
-                        _sig_pdf = _f.read()
+                    generator._apply_director_signature(_doc_s, _nm)
+                _sig_pdf = _doc_s.tobytes()
+                _doc_s.close()
                 if _sig_pdf:
                     st.image(pdf_to_preview_png(_sig_pdf, preview_width=440),
                              caption="사인 미리보기 (Perfect Score)", use_container_width=True)
