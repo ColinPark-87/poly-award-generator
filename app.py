@@ -221,7 +221,7 @@ if campus == _ILSAN_CAMPUS:
                 _dir_pdf = _doc_d.tobytes()
                 _doc_d.close()
                 st.image(pdf_to_preview_png(_dir_pdf, preview_width=440),
-                         caption="사인 미리보기 (Achievement Certificate)", use_container_width=True)
+                         caption="사인 미리보기 (Achievement Certificate)", width='stretch')
             except Exception as _e:
                 st.caption(f"미리보기를 표시할 수 없습니다: {_e}")
 
@@ -251,7 +251,7 @@ if campus not in (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴
                 _doc_s.close()
                 if _sig_pdf:
                     st.image(pdf_to_preview_png(_sig_pdf, preview_width=440),
-                             caption="사인 미리보기 (Perfect Score)", use_container_width=True)
+                             caption="사인 미리보기 (Perfect Score)", width='stretch')
             except Exception as _e:
                 st.caption(f"미리보기를 표시할 수 없습니다: {_e}")
 
@@ -278,7 +278,7 @@ with st.expander("템플릿 미리보기 펼치기", expanded=False):
                 with open(_tmpl_path, "rb") as _tf:
                     _tmpl_bytes = _tf.read()
                 st.image(pdf_to_preview_png(_tmpl_bytes, preview_width=400),
-                         use_container_width=True)
+                         width='stretch')
                 _campus_tmpl = os.path.join(cfg.TEMPLATE_DIR, campus, f"{_at}.pdf")
                 if os.path.exists(_campus_tmpl):
                     st.caption("✅ 캠퍼스 전용 템플릿")
@@ -373,7 +373,7 @@ if campus == "분당엠폴리":
                 if items_k:
                     ev[_at_k] = st.dataframe(
                         pd.DataFrame([{"반": s["class"], "이름": s["full_name"]} for (*_, s) in items_k]),
-                        hide_index=True, use_container_width=True,
+                        hide_index=True, width='stretch',
                         selection_mode="single-row", on_select="rerun", key=f"{sel_prefix}_{_at_k}",
                     )
                 else:
@@ -403,7 +403,7 @@ if campus == "분당엠폴리":
             _at, _folder, _fn, _bytes, _s = sel
             _ci, _cf = st.columns([2, 1])
             with _ci:
-                st.image(pdf_to_preview_png(_bytes, preview_width=900), use_container_width=True)
+                st.image(pdf_to_preview_png(_bytes, preview_width=900), width='stretch')
             with _cf:
                 st.markdown(f"**{_BD_TITLES.get(_at, _at)}**")
                 st.markdown(f"### {_s['full_name']}")
@@ -918,7 +918,7 @@ if "result" in st.session_state:
                         "반": s["class"],
                         _score_col: _fmt_score(s.get("score", s["total"] + s["lc"])),
                     } for s in jb_ach]),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     selection_mode="single-row", on_select="rerun", key="sel_jb_ach",
                 )
             else:
@@ -934,7 +934,7 @@ if "result" in st.session_state:
                         "반": s["class"],
                         _score_col: _fmt_score(s.get("score", s["total"] + s["lc"])),
                     } for s in jb_mw]),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     selection_mode="single-row", on_select="rerun", key="sel_jb_mw",
                 )
             else:
@@ -957,7 +957,7 @@ if "result" in st.session_state:
             if ps:
                 ev_ps = st.dataframe(
                     pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"]} for s in ps]),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     selection_mode="single-row", on_select="rerun", key="sel_ps",
                 )
             else:
@@ -969,7 +969,7 @@ if "result" in st.session_state:
             if hr:
                 ev_hr = st.dataframe(
                     pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"], "평균": s["average"]} for s in hr]),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     selection_mode="single-row", on_select="rerun", key="sel_hr",
                 )
             else:
@@ -982,7 +982,7 @@ if "result" in st.session_state:
                 if bw:
                     ev_bw = st.dataframe(
                         pd.DataFrame([{**_jgcol(s), "이름": s["english_name"], "반": s["class"], "LC": s["lc"]} for s in bw]),
-                        hide_index=True, use_container_width=True,
+                        hide_index=True, width='stretch',
                         selection_mode="single-row", on_select="rerun", key="sel_bw",
                     )
                 else:
@@ -994,7 +994,7 @@ if "result" in st.session_state:
             if sr:
                 ev_sr = st.dataframe(
                     pd.DataFrame([{"이름": s["english_name"], "반": s["class"], "GE": s["ge"]} for s in sr]),
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width='stretch',
                     selection_mode="single-row", on_select="rerun", key="sel_sr",
                 )
             else:
@@ -1054,7 +1054,7 @@ if "result" in st.session_state:
                     and s.get("_src", "") == _sel_student.get("_src", ""):
                 col_img, col_info = st.columns([2, 1])
                 with col_img:
-                    st.image(pdf_to_preview_png(pb), use_container_width=True)
+                    st.image(pdf_to_preview_png(pb), width='stretch')
                 with col_info:
                     st.markdown(f"**{_AWARD_LABEL[at]}**")
                     st.markdown(f"### {s['english_name']}")
@@ -1157,7 +1157,7 @@ if "manual_result" in st.session_state:
     _mr = st.session_state["manual_result"]
     _prev_col, _info_col = st.columns([2, 1])
     with _prev_col:
-        st.image(pdf_to_preview_png(_mr["pdf"]), use_container_width=True)
+        st.image(pdf_to_preview_png(_mr["pdf"]), width='stretch')
     with _info_col:
         st.markdown(f"**{_AWARD_LABEL_MAP.get(_mr['award'], _mr['award'])}**")
         st.markdown(f"### {_mr['name']}")

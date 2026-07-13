@@ -446,7 +446,7 @@ def poly_award_card_grid(awards: list):
             if df is None or count == 0:
                 st.markdown('<div class="poly-empty">해당 학생 없음</div>', unsafe_allow_html=True)
             else:
-                st.dataframe(df, hide_index=True, use_container_width=True, height=min(40 + count * 35, 320))
+                st.dataframe(df, hide_index=True, width='stretch', height=min(40 + count * 35, 320))
             st.markdown("</div>", unsafe_allow_html=True)
 
 
