@@ -1,7 +1,7 @@
 # 상장 글자배치 로직 QnA 정본
 
 > 상장생성기(`generator.py`)에서 **원장이름·학생이름·월** 3개 변수가 어떻게 위치잡히고 바뀌는지 정본. 로직 손볼 때 먼저 여기서 찾을 것.
-> 최종 갱신: 2026-07-10
+> 최종 갱신: 2026-07-21 (위례 캠퍼스=중계 방식 공유, §1-1 지우기 심도 수정)
 
 핵심 원칙 하나: **박힌 글자는 지운 뒤 새로 그린다.** 지우는 방식(배경덮기 vs redaction vs delete_image), 배치 기준(고정Y vs 선검출 vs placeholder검출)만 캠퍼스·변수별로 갈린다.
 
@@ -29,9 +29,10 @@ A. 캠퍼스별 3방식. 공통 = **원본 서명 지움 → 손글씨체(config
 ### 1-1. 중계 등 기본 — 텍스트 서명 (`_apply_director_signature`, :~940)
 - 트리거: `campus_config.director` ≠ 기본값 `SIGNATURE_DEFAULT_NAME`("Colin Park")
 - 박힌 서명이 **텍스트 span** → span 폰트·크기·색·baseline·bbox 추출
-- 지우기: 테두리없는 채움사각형(`draw_rect`)으로 배경색 덮음. **하단 경계 = baseline+3** (바로 아래 서명선 보존, 이름엔 디센더 없음 전제)
+- 지우기: 테두리없는 채움사각형(`draw_rect`)으로 배경색 덮음. **하단 경계 = span 잉크 하단(bbox.y1), 단 `get_drawings`로 찾은 서명선(얇은 가로선) 위로 클램프**(2026-07-21 수정 — 이전 baseline+3 방식은 HolidayRegular의 baseline 아래 획(스워시)이 남아 새 이름 앞뒤에 밑줄/점 잔재 발생)
 - 배경색: 텍스트 **위쪽 30px 띠** 평균 샘플링(크림/흰색 자동대응)
 - 재기입: 같은 baseline, bbox 중앙정렬, `max_w = bbox.width*1.25`, 폰트 `size*1.1`(손글씨 자간보정)
+- 4종 기본 템플릿(PS/HR/BW/SR)의 서명 블록 좌표는 동일(bbox 538~657, baseline 481.1, 선 y≈495.4) — 잔재 회귀 테스트 `tests/test_wirye.py`
 
 ### 1-2. 정발/일산 — 이미지 서명 (`_apply_jungbal_director_signature`, :1115)
 - 트리거: 정발계열 + `campus_config.director` ≠ `JUNGBAL_DIRECTOR_DEFAULT`("Charlotte Lee")
