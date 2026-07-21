@@ -962,11 +962,18 @@ def _apply_director_signature(doc, director_name: str) -> bool:
     else:
         bg = (1, 1, 1)
 
-    # 박힌 이름 제거(배경색으로 채움). 하단은 베이스라인 기준으로 제한 → 바로 아래 서명선 보존
-    # (이름엔 디센더 없음: 'Colin Park' → baseline+3까지면 글자 잉크 완전 제거, 선 미접촉)
-    cover_bottom = origin[1] + 3
+    # 박힌 이름 제거(배경색으로 채움). 하단은 span 잉크 하단(bbox.y1)까지 —
+    # baseline+3만 덮으면 손글씨체(HolidayRegular)의 baseline 아래 획(스워시)이 남아
+    # 새 이름 앞뒤에 밑줄/점 잔재로 보인다. 바로 아래 서명선은 침범하지 않게 클램프.
+    cover_bottom = max(bbox.y1, origin[1] + 3)
+    for _dr in page.get_drawings():
+        _r = _dr["rect"]
+        if (_r.y0 >= origin[1] and _r.y0 <= bbox.y1 + 8
+                and _r.x1 > bbox.x0 and _r.x0 < bbox.x1
+                and (_r.y1 - _r.y0) <= 2.5):          # 서명선(얇은 가로선/채움)
+            cover_bottom = min(cover_bottom, _r.y0 - 0.7)
     # 테두리 없는 채움 사각형으로 박힌 이름을 덮음(redaction은 주석 테두리 잔흔 → draw_rect 사용).
-    # 하단은 베이스라인 기준(서명선 보존), 상단·좌우는 손글씨 어센더 넘침까지 여유 있게.
+    # 하단은 잉크 하단 기준(서명선 보존 클램프), 상단·좌우는 손글씨 어센더 넘침까지 여유 있게.
     page.draw_rect(fitz.Rect(bbox.x0 - 14, bbox.y0 - 16, bbox.x1 + 14, cover_bottom),
                    color=None, fill=bg)
 

@@ -109,9 +109,11 @@ _JUNGGYE_CAMPUS = "중계"   # MT/LT 업로드 분리 + LT 'Level Test' 문구 �
 
 # 정발 양식(Achievement / Monthly·Level Test Winner)을 공유하는 캠퍼스 묶음
 _JUNGBAL_STYLE = (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS)
+# 중계 방식(MT/LT 업로드 분리 + LT 문구 치환 + 4종 상장)을 공유하는 캠퍼스 묶음
+_JUNGGYE_STYLE = (_JUNGGYE_CAMPUS, "위례")
 
 if "campus_list" not in st.session_state:
-    st.session_state["campus_list"] = ["중계", "광명", "일산", "목동", "목동매그넷", "유성", "정발", "분당엠폴리"]
+    st.session_state["campus_list"] = ["중계", "위례", "광명", "일산", "목동", "목동매그넷", "유성", "정발", "분당엠폴리"]
 
 _c1, _c2, _c3 = st.columns([1, 1, 2])
 campus = _c1.selectbox("캠퍼스 선택", st.session_state["campus_list"], index=0, key="campus")
@@ -173,8 +175,8 @@ poly_campus_banner(campus, term=f"{_dt.date.today().year}년 {_dt.date.today().m
 # 중계·일산: 핫리로드(같은 프로세스 재실행) 후에도 신규 generator(build_certificate test_label·
 # _apply_test_label·_apply_campus_label)·matcher·config(set_campus_label 등)가 반영되도록
 # 디스크에서 최신 재로딩 후 이름 재바인딩(세션 1회, 캠퍼스별 guard key 분리).
-if campus in (_JUNGGYE_CAMPUS, _ILSAN_CAMPUS):
-    _reload_guard = "_jg_mods_fresh1" if campus == _JUNGGYE_CAMPUS else "_il_mods_fresh1"
+if campus in _JUNGGYE_STYLE + (_ILSAN_CAMPUS,):
+    _reload_guard = f"_mods_fresh_{campus}"
     if not st.session_state.get(_reload_guard):
         importlib.reload(cfg)
         importlib.reload(matcher)
@@ -207,10 +209,10 @@ if campus == _ILSAN_CAMPUS:
                        "이름이 길어도 자동 축소되어 짤리지 않습니다.")
             if st.button("저장", key=f"jbdir_save_{campus}", type="primary"):
                 cfg.set_campus_director(campus, _new_dir.strip() or cfg.JUNGBAL_DIRECTOR_DEFAULT)
+                # st.rerun() 금지: success 메시지가 바로 지워져 저장 실패처럼 보임.
                 st.success(f"저장 완료 — {campus} 원장 사인: "
                            f"{(_new_dir.strip() or cfg.JUNGBAL_DIRECTOR_DEFAULT)}. "
                            "지금부터 생성되는 상장에 반영됩니다.")
-                st.rerun()
         with _pcol:
             try:
                 _dtmpl = cfg.get_template_path(campus, "achievement_certificate")
@@ -237,9 +239,10 @@ if campus not in (_JUNGBAL_CAMPUS, _ILSAN_CAMPUS, _YUSEONG_CAMPUS, "분당엠폴
                        f"기본값 '{cfg.SIGNATURE_DEFAULT_NAME}'이면 원본 사인 그대로 사용.")
             if st.button("저장", key=f"dir_save_{campus}", type="primary"):
                 cfg.set_campus_director(campus, _new_dir.strip())
+                # st.rerun() 금지: success 메시지가 바로 지워져 저장 실패처럼 보임.
+                # 생성 시점에 config.get_campus_cfg를 새로 읽으므로 rerun 불필요.
                 st.success(f"저장 완료 — {campus} 원장 사인: {_new_dir.strip() or cfg.SIGNATURE_DEFAULT_NAME}. "
                            "지금부터 생성되는 상장에 반영됩니다.")
-                st.rerun()
         with _pcol:
             try:
                 _ptmpl = cfg.get_template_path(campus, "perfect_score")
@@ -507,7 +510,7 @@ if _use_sr:
 else:
     up_col1, up_col2 = st.columns([2, 1], gap="medium")
 
-_is_jg_split = (campus == _JUNGGYE_CAMPUS)   # 중계: MT/LT 업로드칸 분리
+_is_jg_split = (campus in _JUNGGYE_STYLE)   # 중계·위례: MT/LT 업로드칸 분리
 
 # 기본값(비분리 캠퍼스에서도 항상 정의되도록)
 uploaded_mt = uploaded_lt = None
@@ -946,7 +949,7 @@ if "result" in st.session_state:
         _lbl_bw = _award_labels.get("best_writer",   "Best Writer")
         _lbl_sr = _award_labels.get("best_sr",       "Best SR")
         _has_bw = "best_writer" in _award_labels
-        _jg = (campus == _JUNGGYE_CAMPUS)   # 중계: MT/LT 구분 열 표시
+        _jg = (campus in _JUNGGYE_STYLE)   # 중계·위례: MT/LT 구분 열 표시
         def _jgcol(s):
             return {"시험": s.get("_src", "")} if _jg else {}
         _res_cols = st.columns(4 if _has_bw else 3, gap="small")
