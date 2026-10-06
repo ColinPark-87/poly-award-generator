@@ -446,10 +446,10 @@ def load_bundang_best_br(file_path: str) -> list[dict[str, Any]]:
         cells = [_bd_norm(c) for c in row]
         if ni >= len(cells) or not cells[ni] or "(" not in cells[ni]:
             continue
-        # 학급: 이름 왼쪽 컬럼 중 클래스 코드 패턴(예 5HO1_1)
+        # 학급: 이름 왼쪽 컬럼 중 클래스 코드 패턴(예 5HO1_1, Prep 1)
         cls = ""
         for j in range(ni - 1, -1, -1):
-            if j < len(cells) and re.match(r"^\d[A-Z]{2}", cells[j]):
+            if j < len(cells) and re.match(r"^(\d[A-Z]{2}|Prep\b)", cells[j], re.I):
                 cls = cells[j]
                 break
         # 콤마로 묶인 복수 인원 분리
@@ -532,7 +532,7 @@ def load_bundang_best_essay(file_path: str) -> list[dict[str, Any]]:
         # 반코드: 이름 왼쪽 컬럼 중 클래스코드 패턴(5HO1_1 등)
         cls = ""
         for j in range(ni - 1, -1, -1):
-            if j < len(cells) and re.match(r"^\d[A-Z]{2}", cells[j]):
+            if j < len(cells) and re.match(r"^(\d[A-Z]{2}|Prep\b)", cells[j], re.I):
                 cls = cells[j]
                 break
         full = cells[ni].strip()
